@@ -1,5 +1,5 @@
 # Hel
-General purpose C++14 library.
+Hel is a general purpose C++14 library.
 
 ## Why "Hel"?
 Hel is the daughter of Loki.
