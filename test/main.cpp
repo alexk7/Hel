@@ -12,6 +12,9 @@ using namespace std;
 #define PPCAT_NX(A, B) A ## B
 #define PPCAT(A, B) PPCAT_NX(A, B)
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Types
+
 template <class T> struct Unit {};
 template <class ...T> struct UnitList : Unit<UnitList<T...>> {};
 template <class T> struct Type : Unit<Type<T>> {};
@@ -20,20 +23,76 @@ template <class T, T t> struct Constant : Unit<Constant<T, t>> {
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-template <class T, class... U> constexpr array<decay_t<T>, 1 + sizeof...(U)> make_array(T&& t, U&&... u) {
-	return { forward<T>(t), forward<U>(u)... };
-}
+// Objects
 
-template <class T, class D> unique_ptr<T, D> make_unique_ptr(T* p, D d) { return unique_ptr<T, D>(p, d); }
+constexpr auto True = Constant<bool, true>{};
+constexpr auto False = Constant<bool, false>{};
 
-template <class T> inline string TypeName(Type<T>) {
-	return make_unique_ptr(abi::__cxa_demangle(typeid(T).name(), 0, 0, 0), free).get();
-}
+constexpr struct Noop_t {
+	template <class ...T> constexpr void operator()(const T&...) const {}
+} Noop{};
+
+constexpr struct MakeArray_t {
+	template <class T, class... U> constexpr auto operator()(T&& t, U&&... u) const {
+		return array<decay_t<T>, 1 + sizeof...(U)>{ forward<T>(t), forward<U>(u)... };
+	}
+} MakeArray{};
+
+constexpr struct MakeUniquePtr_t {
+	template <class T, class D> constexpr auto operator()(T* p, D d) const { return unique_ptr<T, D>{p, d}; }
+} MakeUniquePtr{};
+
+template <class Derived>
+struct ConstantFn_t {
+	template <class T, T t1, T ...t2> constexpr auto operator()(Constant<T, t1>, Constant<T, t2>...) const {
+		constexpr auto result = Derived{}(t1, t2...);
+		return Constant<decltype(result), result>{};
+	}
+};
+
+constexpr struct And_t : ConstantFn_t<And_t> {
+	using ConstantFn_t::operator();
+	constexpr auto operator()() const { return True; }
+	template <class T, class ...U> constexpr auto operator()(const T& t, const U&... u) const {
+		bool b = static_cast<bool>(t);
+		Noop((b = b && u)...);
+		return b;
+	}
+} And{};
+
+constexpr struct Or_t : ConstantFn_t<Or_t> {
+	using ConstantFn_t::operator();
+	constexpr auto operator()() const { return False; }
+	template <class T, class ...U> constexpr auto operator()(const T& t, const U&... u) const {
+		bool b = static_cast<bool>(t);
+		Noop((b = b || u)...);
+		return b;
+	}
+} Or{};
+
+constexpr struct Multiply_t : ConstantFn_t<Multiply_t> {
+	using ConstantFn_t::operator();
+	template <class T, class ...U> constexpr T operator()(T t, const U& ...u) const {
+		Noop((t *= u)...);
+		return t;
+	}
+} Multiply{};
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Functions
+
+template <class T> string TypeName(Type<T>) {
+	return MakeUniquePtr(abi::__cxa_demangle(typeid(T).name(), 0, 0, 0), free).get();
+}
 
 template <class T, T t> constexpr auto Value(Constant<T, t>) { return t; }
-template <class T, T... t> constexpr array<T, sizeof...(t)> ToArray(UnitList<Constant<T, t>...>) { return { t... }; }
+template <class T, T... t> constexpr auto ToArray(UnitList<Constant<T, t>...>) {
+	return array<T, sizeof...(t)>{ t... };
+}
+template <class ...T> constexpr auto ToArray(UnitList<T...>) {
+	return MakeArray(ToArray(T{})...);
+}
 
 template <class T, T t> constexpr auto operator!(Constant<T, t>) { return Constant<bool, !t>{}; }
 template <class T, T t, class U, U u> constexpr auto operator<(Constant<T, t>, Constant<U, u>) {
@@ -54,12 +113,6 @@ template <class T> constexpr auto RemoveRValueReference(Type<T>) { return Type<T
 
 template <class T, class Then, class Else> constexpr auto If(Constant<T, 0>, Then, Else v) { return v; }
 template <class T, class Then, class Else> constexpr auto If(Constant<T, 1>, Then v, Else) { return v; }
-
-template <bool ...b> constexpr auto And(Constant<bool, b>...) {
-	return UnitList<Constant<bool, b>...>{} == UnitList<Constant<bool, (b, true)>...>{};
-}
-
-template <bool ...b> constexpr auto Or(Constant<bool, b> ...a) { return !And(!a...); }
 
 template <class T, char c> constexpr auto Parse(Type<T>, UnitList<Constant<char, c>>) {
 	return Constant<T, c - '0'>{};
@@ -113,20 +166,23 @@ template <class ...T, class ...U> constexpr auto Concatenate(UnitList<T...>, Uni
 	return UnitList<T..., U...>{};
 }
 
+template <class T, class ...U> constexpr auto Append(Unit<T>, UnitList<U...>) { return UnitList<U..., T>{}; }
 template <class T, class ...U> constexpr auto Prepend(Unit<T>, UnitList<U...>) { return UnitList<T, U...>{}; }
 
 template <class T, class ...L> constexpr auto PrependToEach(Unit<T>, UnitList<L...>) {
 	return MakeList(Prepend(T{}, L{})...);
 }
 
-inline constexpr auto CartesianProduct(UnitList<>) { return UnitList<UnitList<>>{}; }
-template <class T, class ...L> constexpr auto CartesianProduct(UnitList<UnitList<T>, L...>) {
-	return PrependToEach(T{}, CartesianProduct(UnitList<L...>{}));
+template <class ...T> constexpr auto CartesianProduct(UnitList<T...>) {
+	return UnitList<UnitList<T...>>{};
+}
+template <class T, class L, class ...M> constexpr auto CartesianProduct(UnitList<T>, L, M...) {
+	return PrependToEach(T{}, CartesianProduct(L{}, M{}...));
 }
 template <class T, class U, class ...W, class ...L>
-constexpr auto CartesianProduct(UnitList<UnitList<T, U, W...>, L...>) {
-	return Concatenate(CartesianProduct(UnitList<UnitList<T>, L...>{}),
-					   CartesianProduct(UnitList<UnitList<U, W...>, L...>{}));
+constexpr auto CartesianProduct(UnitList<T, U, W...>, L...) {
+	return Concatenate(CartesianProduct(UnitList<T>{}, L{}...),
+					   CartesianProduct(UnitList<U, W...>{}, L{}...));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -187,11 +243,13 @@ public:
 			throw bad_cast{};
 		return static_cast<T>(*static_cast<remove_reference_t<T>*>(u.data_.buffer));
 	}
-	friend size_t GetIndex(const Variant& v) { return v.data_.tag; }
+	friend size_t BoundTypeIndex(const Variant& v) { return v.data_.tag; }
 };
 
-template <class T> constexpr auto BoundTypes(Type<T>) { return UnitList<Type<T>>{}; }
 template <class ...T> constexpr auto BoundTypes(Type<Variant<T...>>) { return UnitList<Type<T>...>{}; }
+
+template <class T> constexpr size_t BoundTypeIndex(const T&) { return 0; }
+template <class T> constexpr auto BoundTypes(Type<T>) { return UnitList<Type<T>>{}; }
 
 template <class T, class U> enable_if_t<Type<T>{} == Type<U&&>{}, T> UnsafeGetAs(Type<T>, U&& u) {
 	return static_cast<T>(u);
@@ -201,37 +259,39 @@ template <class T, class U> enable_if_t<Type<T>{} == Type<U&&>{}, T> GetAs(Type<
 	return static_cast<T>(u);
 }
 
-template <class T> constexpr size_t GetIndex(const T&) { return 0; }
-
-inline size_t MultiMethodIndex() { return 0; }
-template <class V, class ...W> size_t MultiMethodIndex(const V& v, const W& ...w) {
-	return GetIndex(v) * Size(CartesianProduct(MakeList(Prepend(Type<void>{}, BoundTypes(Type<W>{}))...))) + MultiMethodIndex(w...);
+template <class A> decltype(auto) Subscript(A&& a, size_t s) { return forward<A>(a)[s]; }
+template <class A, class ...S> decltype(auto) Subscript(A&& a, size_t s1, size_t s2, S ...s3) {
+	return Subscript(forward<A>(a)[s1], s2, s3...);
 }
 
 template <class F, class ...V> class MultiMethod {
-	constexpr static auto all_ = CartesianProduct(MakeList(BoundTypes(Decay(Type<V>{}))...));
+	constexpr static auto all_ = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
 	using R = decltype(DeclVal(Unpack(all_, [](auto ...al) {
 		return RemoveRValueReference(CommonType(Unpack(al, [](auto ...a) {
 			return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
 		})...));
 	})));
-	using P = R (*)(V&&...);
 	template <class ...A> static R Imp(V&& ...v) {
 		return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, A{}), forward<V>(v))...);
 	}
 	[[noreturn]] static R NullImp(V&&...) { throw invalid_argument("Null Variant passed to function."); }
+	template <class AL> constexpr static auto GetImpRecur(AL al) {
+		return decltype(Unpack(al, [](auto... a) {
+			return If(And((a != Type<void>{})...),
+					  [](auto... b) { return Constant<R (*)(V&&...), Imp<decltype(b)...>>{}; },
+					  [](auto...) { return Constant<R (*)(V&&...), NullImp>{}; })(a...);
+		})){};
+	}
+	template <class AL, class BL1, class ...BL2> constexpr static auto GetImpRecur(AL, BL1, BL2...) {
+		return decltype(Unpack(BL1{}, [=](auto... a) {
+			return MakeList(GetImpRecur(Append(Type<void>{}, AL{}), BL2{}...),
+							GetImpRecur(Append(decltype(a){}, AL{}), BL2{}...)...);
+		})){};
+	}
 public:
 	static auto GetImp(const V& ...v) {
-		constexpr static auto all = CartesianProduct(MakeList(Prepend(Type<void>{}, BoundTypes(Decay(Type<V>{})))...));
-		constexpr static auto imps = ToArray(decltype(Unpack(all, [](auto... al) {
-			return MakeList(Unpack(al, [](auto... a) {
-				return If(And((a != Type<void>{})...),
-						  [](auto... b) { return Constant<P, Imp<decltype(b)...>>{}; },
-						  [](auto...) { return Constant<P, NullImp>{}; })(a...);
-			})...);
-		})){});
-		size_t index = MultiMethodIndex(v...);
-		return imps[index];
+		constexpr static auto imps = ToArray(GetImpRecur(UnitList<>{}, BoundTypes(Decay(Type<V>{}))...));
+		return Subscript(imps, BoundTypeIndex(v)...);
 	}
 };
 
