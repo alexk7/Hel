@@ -1,3 +1,10 @@
+#include "Unit.h"
+#include "UnitList.h"
+#include "Type.h"
+#include "Constant.h"
+#include "True.h"
+#include "False.h"
+#include "Noop.h"
 #include <cassert>
 #include <iostream>
 #include <utility>
@@ -11,26 +18,6 @@ using namespace std;
 
 #define PPCAT_NX(A, B) A ## B
 #define PPCAT(A, B) PPCAT_NX(A, B)
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Types
-
-template <class T> struct Unit {};
-template <class ...T> struct UnitList : Unit<UnitList<T...>> {};
-template <class T> struct Type : Unit<Type<T>> {};
-template <class T, T t> struct Constant : Unit<Constant<T, t>> {
-	constexpr operator T() const { return t; }
-};
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Objects
-
-constexpr auto True = Constant<bool, true>{};
-constexpr auto False = Constant<bool, false>{};
-
-constexpr struct Noop_t {
-	template <class ...T> constexpr void operator()(const T&...) const {}
-} Noop{};
 
 constexpr struct MakeArray_t {
 	template <class T, class... U> constexpr auto operator()(T&& t, U&&... u) const {

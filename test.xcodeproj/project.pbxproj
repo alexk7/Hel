@@ -23,6 +23,13 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		629203DE1AAD2EFE004C500C /* Unit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Unit.h; sourceTree = "<group>"; };
+		629203DF1AAD31F7004C500C /* UnitList.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = UnitList.h; sourceTree = "<group>"; };
+		629203E01AAD3263004C500C /* Type.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Type.h; sourceTree = "<group>"; };
+		629203E21AAD337D004C500C /* Constant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Constant.h; sourceTree = "<group>"; };
+		629203E31AAD3569004C500C /* True.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = True.h; sourceTree = "<group>"; };
+		629203E41AAD35BB004C500C /* False.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = False.h; sourceTree = "<group>"; };
+		629203E51AAD35F2004C500C /* Noop.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Noop.h; sourceTree = "<group>"; };
 		62E7981B14DC83D9000076A0 /* test */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test; sourceTree = BUILT_PRODUCTS_DIR; };
 		62E7981F14DC83D9000076A0 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -41,6 +48,13 @@
 		62E7981014DC83D9000076A0 = {
 			isa = PBXGroup;
 			children = (
+				629203E41AAD35BB004C500C /* False.h */,
+				629203E51AAD35F2004C500C /* Noop.h */,
+				629203E31AAD3569004C500C /* True.h */,
+				629203E21AAD337D004C500C /* Constant.h */,
+				629203DF1AAD31F7004C500C /* UnitList.h */,
+				629203DE1AAD2EFE004C500C /* Unit.h */,
+				629203E01AAD3263004C500C /* Type.h */,
 				62E7981E14DC83D9000076A0 /* test */,
 				62E7981C14DC83D9000076A0 /* Products */,
 			);
