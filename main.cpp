@@ -1,44 +1,29 @@
-#include "Unit.h"
-#include "UnitList.h"
-#include "Type.h"
 #include "Constant.h"
-#include "True.h"
 #include "False.h"
 #include "Noop.h"
-#include <cassert>
+#include "True.h"
+#include "Type.h"
+#include "Unit.h"
+#include "UnitList.h"
+#include <array>
+#include <assert.h>
+#include <cxxabi.h>
 #include <iostream>
-#include <utility>
+#include <stdexcept>
 #include <tuple>
 #include <type_traits>
-#include <cxxabi.h>
-#include <array>
-#include <stdexcept>
 #include <typeinfo>
-using namespace std;
+#include <utility>
+#include <algorithm>
+#include "MakeArray.h"
+#include "MakeUniquePtr.h"
+#include "ConstantFunction.h"
 
 #define PPCAT_NX(A, B) A ## B
 #define PPCAT(A, B) PPCAT_NX(A, B)
 
-constexpr struct MakeArray_t {
-	template <class T, class... U> constexpr auto operator()(T&& t, U&&... u) const {
-		return array<decay_t<T>, 1 + sizeof...(U)>{ forward<T>(t), forward<U>(u)... };
-	}
-} MakeArray{};
-
-constexpr struct MakeUniquePtr_t {
-	template <class T, class D> constexpr auto operator()(T* p, D d) const { return unique_ptr<T, D>{p, d}; }
-} MakeUniquePtr{};
-
-template <class Derived>
-struct ConstantFn_t {
-	template <class T, T t1, T ...t2> constexpr auto operator()(Constant<T, t1>, Constant<T, t2>...) const {
-		constexpr auto result = Derived{}(t1, t2...);
-		return Constant<decltype(result), result>{};
-	}
-};
-
-constexpr struct And_t : ConstantFn_t<And_t> {
-	using ConstantFn_t::operator();
+constexpr struct And_t : ConstantFunction<And_t> {
+	using ConstantFunction::operator();
 	constexpr auto operator()() const { return True; }
 	template <class T, class ...U> constexpr auto operator()(const T& t, const U&... u) const {
 		bool b = static_cast<bool>(t);
@@ -47,8 +32,8 @@ constexpr struct And_t : ConstantFn_t<And_t> {
 	}
 } And{};
 
-constexpr struct Or_t : ConstantFn_t<Or_t> {
-	using ConstantFn_t::operator();
+constexpr struct Or_t : ConstantFunction<Or_t> {
+	using ConstantFunction::operator();
 	constexpr auto operator()() const { return False; }
 	template <class T, class ...U> constexpr auto operator()(const T& t, const U&... u) const {
 		bool b = static_cast<bool>(t);
@@ -57,8 +42,8 @@ constexpr struct Or_t : ConstantFn_t<Or_t> {
 	}
 } Or{};
 
-constexpr struct Multiply_t : ConstantFn_t<Multiply_t> {
-	using ConstantFn_t::operator();
+constexpr struct Multiply_t : ConstantFunction<Multiply_t> {
+	using ConstantFunction::operator();
 	template <class T, class ...U> constexpr T operator()(T t, const U& ...u) const {
 		Noop((t *= u)...);
 		return t;
@@ -69,13 +54,13 @@ constexpr struct Multiply_t : ConstantFn_t<Multiply_t> {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Functions
 
-template <class T> string TypeName(Type<T>) {
+template <class T> std::string TypeName(Type<T>) {
 	return MakeUniquePtr(abi::__cxa_demangle(typeid(T).name(), 0, 0, 0), free).get();
 }
 
 template <class T, T t> constexpr auto Value(Constant<T, t>) { return t; }
 template <class T, T... t> constexpr auto ToArray(UnitList<Constant<T, t>...>) {
-	return array<T, sizeof...(t)>{ t... };
+	return std::array<T, sizeof...(t)>{ t... };
 }
 template <class ...T> constexpr auto ToArray(UnitList<T...>) {
 	return MakeArray(ToArray(T{})...);
@@ -94,7 +79,7 @@ template <class T, class U> constexpr auto operator==(Unit<T>, Unit<U>) { return
 template <class T, class U> constexpr auto operator!=(Unit<T> t, Unit<U> u) { return !(t == u); }
 
 template <class T> T DeclVal(Type<T>);
-template <class T> constexpr auto Decay(Type<T>) { return Type<decay_t<T>>{}; }
+template <class T> constexpr auto Decay(Type<T>) { return Type<std::decay_t<T>>{}; }
 template <class T> constexpr auto RemoveRValueReference(Type<T&&>) { return Type<T>{}; }
 template <class T> constexpr auto RemoveRValueReference(Type<T>) { return Type<T>{}; }
 
@@ -116,7 +101,7 @@ template <class ...T, class F> constexpr decltype(auto) Unpack(UnitList<T...>, F
 
 template <class T> constexpr auto CommonType(Type<T> t) { return t; }
 template <class T, class U> constexpr auto CommonType(Type<T>, Type<U>) {
-	return Type<decltype(false ? declval<T>() : declval<U>())>{};
+	return Type<decltype(false ? std::declval<T>() : std::declval<U>())>{};
 }
 template <class T, class U, class ...V> constexpr auto CommonType(Type<T> t, Type<U> u, Type<V> ...v) {
 	return CommonType(CommonType(t, u), v...);
@@ -136,7 +121,7 @@ template <class T, class U> constexpr auto ApplyReference(Type<T&>, Type<U>) { r
 template <class T, class U> constexpr auto ApplyReference(Type<T&&>, Type<U>) { return Type<U&&>{}; }
 
 template <class T, class U> constexpr auto ApplyCVReference(Type<T> t, Type<U> u) {
-	return ApplyReference(t, ApplyCV(Type<remove_reference_t<T>>{}, u));
+	return ApplyReference(t, ApplyCV(Type<std::remove_reference_t<T>>{}, u));
 }
 
 template <class T> constexpr auto FindType(T, UnitList<>) {
@@ -208,27 +193,27 @@ class Variant : VariantNS::VariantBase {
 	}
 public:
 	constexpr Variant() noexcept {}
-	constexpr Variant(nullptr_t) noexcept {}
+	constexpr Variant(std::nullptr_t) noexcept {}
 	Variant(Variant&&) noexcept = default;
-	template <class T, class U, class = enable_if_t<ValidType(Type<U>{})>>
-	Variant(T&& t, Type<U> u) { data_ = { Tag(u), new U(forward<T>(t)) }; }
-	template <class T> Variant(T&& t) : Variant(forward<T>(t), Decay(Type<T>{})) {}
+	template <class T, class U, class = std::enable_if_t<ValidType(Type<U>{})>>
+	Variant(T&& t, Type<U> u) { data_ = { Tag(u), new U(static_cast<T&&>(t)) }; }
+	template <class T> Variant(T&& t) : Variant(static_cast<T&&>(t), Decay(Type<T>{})) {}
 	~Variant() {
 		using FP = void (*)(void*);
 		static const FP kFPs[] = { Noop, CastAndDelete<Types>... };
 		kFPs[data_.tag](data_.buffer);
 	}
 	Variant& operator=(Variant _u) { swap(*this, _u); return *this; }
-	friend void swap(Variant& _a, Variant& _b) { swap(_a.data_, _b.data_); }
+	friend void swap(Variant& _a, Variant& _b) { std::swap(_a.data_, _b.data_); }
 	template <class T, class U>
-	friend enable_if_t<Variant::ValidGet(Type<T>{}, Type<U&&>{}), T> UnsafeGetAs(Type<T>, U&& u) {
-		return static_cast<T>(*static_cast<remove_reference_t<T>*>(u.data_.buffer));
+	friend std::enable_if_t<Variant::ValidGet(Type<T>{}, Type<U&&>{}), T> UnsafeGetAs(Type<T>, U&& u) {
+		return static_cast<T>(*static_cast<std::remove_reference_t<T>*>(u.data_.buffer));
 	}
 	template <class T, class U>
-	friend enable_if_t<Variant::ValidGet(Type<T>{}, Type<U&&>{}), T> GetAs(Type<T>, U&& u) {
+	friend std::enable_if_t<Variant::ValidGet(Type<T>{}, Type<U&&>{}), T> GetAs(Type<T>, U&& u) {
 		if (u.data_.tag != Tag(Decay(Type<T>{})))
-			throw bad_cast{};
-		return static_cast<T>(*static_cast<remove_reference_t<T>*>(u.data_.buffer));
+			throw std::bad_cast{};
+		return static_cast<T>(*static_cast<std::remove_reference_t<T>*>(u.data_.buffer));
 	}
 	friend size_t BoundTypeIndex(const Variant& v) { return v.data_.tag; }
 };
@@ -238,17 +223,17 @@ template <class ...T> constexpr auto BoundTypes(Type<Variant<T...>>) { return Un
 template <class T> constexpr size_t BoundTypeIndex(const T&) { return 0; }
 template <class T> constexpr auto BoundTypes(Type<T>) { return UnitList<Type<T>>{}; }
 
-template <class T, class U> enable_if_t<Type<T>{} == Type<U&&>{}, T> UnsafeGetAs(Type<T>, U&& u) {
+template <class T, class U> std::enable_if_t<Type<T>{} == Type<U&&>{}, T> UnsafeGetAs(Type<T>, U&& u) {
 	return static_cast<T>(u);
 }
 
-template <class T, class U> enable_if_t<Type<T>{} == Type<U&&>{}, T> GetAs(Type<T>, U&& u) {
+template <class T, class U> std::enable_if_t<Type<T>{} == Type<U&&>{}, T> GetAs(Type<T>, U&& u) {
 	return static_cast<T>(u);
 }
 
-template <class A> decltype(auto) Subscript(A&& a, size_t s) { return forward<A>(a)[s]; }
+template <class A> decltype(auto) Subscript(A&& a, size_t s) { return static_cast<A&&>(a)[s]; }
 template <class A, class ...S> decltype(auto) Subscript(A&& a, size_t s1, size_t s2, S ...s3) {
-	return Subscript(forward<A>(a)[s1], s2, s3...);
+	return Subscript(static_cast<A&&>(a)[s1], s2, s3...);
 }
 
 template <class F, class ...V> class MultiMethod {
@@ -259,9 +244,9 @@ template <class F, class ...V> class MultiMethod {
 		})...));
 	})));
 	template <class ...A> static R Imp(V&& ...v) {
-		return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, A{}), forward<V>(v))...);
+		return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, A{}), static_cast<V&&>(v))...);
 	}
-	[[noreturn]] static R NullImp(V&&...) { throw invalid_argument("Null Variant passed to function."); }
+	[[noreturn]] static R NullImp(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
 	template <class AL> constexpr static auto GetImpRecur(AL al) {
 		return decltype(Unpack(al, [](auto... a) {
 			return If(And((a != Type<void>{})...),
@@ -286,14 +271,14 @@ public:
 #define DEFINE_FUNCTION(fn)\
 	namespace Fn {\
 		struct PPCAT(fn,_t) {\
-			template <class ...A> constexpr decltype(auto) operator()(A&& ...a) const { return fn(forward<A>(a)...); }\
+			template <class ...A> constexpr decltype(auto) operator()(A&& ...a) const { return fn(static_cast<A&&>(a)...); }\
 		};\
 	}
 #define DEFINE_MULTIMETHOD(fn)\
 	DEFINE_FUNCTION(fn)\
 	namespace VariantNS {\
 		template <class ...V> constexpr decltype(auto) fn(V&& ...v) {\
-			return MultiMethod<Fn::PPCAT(fn,_t), V...>::GetImp(v...)(forward<V>(v)...);\
+			return MultiMethod<Fn::PPCAT(fn,_t), V...>::GetImp(v...)(static_cast<V&&>(v)...);\
 		}\
 	}
 #endif
@@ -410,6 +395,7 @@ namespace VariantNS {
 }
 #endif
 
+using namespace std;
 using Shape3 = Variant<Circle, Rectangle, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, Triangle>;
 
 int main()
