@@ -7,14 +7,14 @@ class GetLine_t {
 		size_t linecap_ = 0;
 	};
 public:
-	std::string operator()(FILE* p) const {
+	const char* operator()(FILE* p) const {
 		/*thread_local*/ static Data data;
 		ssize_t l = getline(&data.line_, &data.linecap_, p);
-		if (l <= 0)
-			return {};
-		if (data.line_[l-1] == '\n')
-			--l;
-		return { data.line_, static_cast<size_t>(l) };
+		if (l < 0)
+			return nullptr;
+		if (l > 0 && data.line_[l-1] == '\n')
+			data.line_[l-1] = '\0';
+		return data.line_;
 	}
 };
 

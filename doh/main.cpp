@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <stdio.h>
 #include <string>
 #include <regex>
@@ -15,12 +16,8 @@ using namespace std;
 int main(int argc, const char * argv[]) {
 	auto filenames = With(MakeUniquePtr(popen("ls *.h", "r"), pclose), [](auto pFile) {
 		vector<string> v;
-		for (;;) {
-			auto e = GetLine(pFile.get());
-			if (e.empty())
-				break;
-			v.push_back(e);
-		}
+		while (auto line = GetLine(pFile.get()))
+			v.emplace_back(line);
 		return v;
 	});
 	unordered_set<string> symbols;
@@ -31,10 +28,8 @@ int main(int argc, const char * argv[]) {
 			cout << "FILE: " << filename << endl;
 			set<string> dependencies;
 			vector<string> code;
-			for (;;) {
-				auto line = GetLine(pFile.get());
-				if (line.empty())
-					break;
+			while (auto pLine = GetLine(pFile.get())) {
+				string line{pLine};
 				if (line != "#pragma once" && !StartsWith(line, "#include \""s)) {
 					static const regex r{"[_a-zA-Z][_a-zA-Z0-9]*"};
 					sregex_iterator i{begin(line), end(line), r}, iEnd;
@@ -46,12 +41,12 @@ int main(int argc, const char * argv[]) {
 					code.push_back(line);
 				}
 			}
-			auto& out = cout;
+			ofstream out(filename);
 			out << "#pragma once\n";
 			for (const auto& e : dependencies)
-				cout << "#include \"" << e << ".h\"\n";
+				out << "#include \"" << e << ".h\"\n";
 			for (const auto& e : code)
-				cout << e << endl;
+				out << e << endl;
 		}
 	}
 }
