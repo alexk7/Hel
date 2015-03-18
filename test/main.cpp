@@ -116,11 +116,19 @@ template <class ...T> constexpr auto CartesianProduct(UnitList<T...>) {
 template <class T, class L, class ...M> constexpr auto CartesianProduct(UnitList<T>, L, M...) {
 	return PrependToEach(T{}, CartesianProduct(L{}, M{}...));
 }
-template <class T, class U, class ...W, class ...L>
-constexpr auto CartesianProduct(UnitList<T, U, W...>, L...) {
+template <class T, class U, class ...W, class ...L> constexpr auto CartesianProduct(UnitList<T, U, W...>, L...) {
 	return Concatenate(CartesianProduct(UnitList<T>{}, L{}...),
 					   CartesianProduct(UnitList<U, W...>{}, L{}...));
 }
+
+template <class F> class Recursive_ft {
+	F f_;
+public:
+	Recursive_ft(F f) : f_(std::move(f)) {}
+	template <class ...A> constexpr auto operator()(A&& ...a) const { return f_(*this, static_cast<A&&>(a)...); }
+};
+
+template <class F> constexpr auto Recursive(F&& f) { return Recursive_ft<std::decay_t<F>>{static_cast<F&&>(f)}; }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -212,25 +220,25 @@ template <class F, class ...V> class MultiMethod {
 		return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, A{}), static_cast<V&&>(v))...);
 	}
 	[[noreturn]] static R NullImp(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
-	template <class AL, class BLL> constexpr static auto GetImpRecur(AL, BLL bll) {
-		return decltype(If(Size(BLL{}) == 0_z,
-						   [](auto) {
-							   return Unpack(AL{}, [](auto... a) {
-								   return If(And((a != Type<void>{})...),
-											 [](auto... a) { return Constant<R (*)(V&&...), Imp<decltype(a)...>>{}; },
-											 [](auto...) { return Constant<R (*)(V&&...), NullImp>{}; })(a...);
-							   });
-						   },
-						   [](auto bll) {
-							   return Unpack(Front(bll), [=](auto... b) {
-								   return MakeList(GetImpRecur(Append(Type<void>{}, AL{}), Tail(bll)),
-												   GetImpRecur(Append(decltype(b){}, AL{}), Tail(bll))...);
-							   });
-						   })(bll)){};
-	}
 public:
 	static auto GetImp(const V& ...v) {
-		constexpr static auto imps = ToArray(GetImpRecur(UnitList<>{}, MakeList(BoundTypes(Decay(Type<V>{}))...)));
+		constexpr static auto imps = ToArray(decltype(Recursive([](const auto& self, auto bll, auto al) {
+			return If(Size(bll) == 0_z,
+					  [&](auto) {
+						  return Unpack(al, [](auto... a) {
+							  return If(And((a != Type<void>{})...),
+										[](auto... a) { return Constant<R (*)(V&&...), Imp<decltype(a)...>>{}; },
+										[](auto...) { return Constant<R (*)(V&&...), NullImp>{}; })(a...);
+						  });
+					  },
+					  [&](auto bll) {
+						  return Unpack(Front(bll), [=](auto... b) {
+							  auto tail = Tail(bll);
+							  return MakeList(self(tail, Append(Type<void>{}, al)),
+											  self(tail, Append(b, al))...);
+						  });
+					  })(bll);
+		})(MakeList(BoundTypes(Decay(Type<V>{}))...), UnitList<>{})){});
 		return Subscript(imps, BoundTypeIndex(v)...);
 	}
 };
@@ -238,9 +246,9 @@ public:
 #if 1
 #define DEFINE_FUNCTION(fn)\
 	namespace Hel {\
-		constexpr static struct PPCAT(fn,_ft) {\
+		struct PPCAT(fn,_ft) {\
 			template <class ...A> constexpr decltype(auto) operator()(A&& ...a) const { return fn(static_cast<A&&>(a)...); }\
-		} PPCAT(fn,_f){};\
+		};\
 	}
 #define DEFINE_MULTIMETHOD(fn)\
 	DEFINE_FUNCTION(fn)\
