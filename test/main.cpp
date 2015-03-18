@@ -212,43 +212,23 @@ template <class F, class ...V> class MultiMethod {
 		return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, A{}), static_cast<V&&>(v))...);
 	}
 	[[noreturn]] static R NullImp(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
-	/*
-	template <class AL> constexpr static auto GetImpRecur(AL al) {
-		return decltype(Unpack(al, [](auto... a) {
-			return If(And((a != Type<void>{})...),
-					  [](auto... b) { return Constant<R (*)(V&&...), Imp<decltype(b)...>>{}; },
-					  [](auto...) { return Constant<R (*)(V&&...), NullImp>{}; })(a...);
-		})){};
-	}
-	template <class AL, class BL1, class ...BL2> constexpr static auto GetImpRecur(AL, BL1, BL2...) {
-		return decltype(Unpack(BL1{}, [=](auto... a) {
-			return MakeList(GetImpRecur(Append(Type<void>{}, AL{}), BL2{}...),
-							GetImpRecur(Append(decltype(a){}, AL{}), BL2{}...)...);
-		})){};
-	}*/
-	template <class AL, class BLL> constexpr static auto GetImpRecur(AL, BLL) {
+	template <class AL, class BLL> constexpr static auto GetImpRecur(AL, BLL bll) {
 		return decltype(If(Size(BLL{}) == 0_z,
-				  [](auto) {
-					  return Unpack(AL{}, [](auto... a) {
-						  return If(And((a != Type<void>{})...),
-									[](auto... b) { return Constant<R (*)(V&&...), Imp<decltype(b)...>>{}; },
-									[](auto...) { return Constant<R (*)(V&&...), NullImp>{}; })(a...);
-					  });
-				  },
-				  [](auto bll) {
-					  return Unpack(Front(bll), [=](auto... b) {
-						  return MakeList(GetImpRecur(Append(Type<void>{}, AL{}), Tail(bll)),
-										  GetImpRecur(Append(decltype(b){}, AL{}), Tail(bll))...);
-					  });
-				  })(BLL{})){};
+						   [](auto) {
+							   return Unpack(AL{}, [](auto... a) {
+								   return If(And((a != Type<void>{})...),
+											 [](auto... a) { return Constant<R (*)(V&&...), Imp<decltype(a)...>>{}; },
+											 [](auto...) { return Constant<R (*)(V&&...), NullImp>{}; })(a...);
+							   });
+						   },
+						   [](auto bll) {
+							   return Unpack(Front(bll), [=](auto... b) {
+								   return MakeList(GetImpRecur(Append(Type<void>{}, AL{}), Tail(bll)),
+												   GetImpRecur(Append(decltype(b){}, AL{}), Tail(bll))...);
+							   });
+						   })(bll)){};
 	}
 public:
-	/*
-	static auto GetImp(const V& ...v) {
-		constexpr static auto imps = ToArray(GetImpRecur(UnitList<>{}, BoundTypes(Decay(Type<V>{}))...));
-		return Subscript(imps, BoundTypeIndex(v)...);
-	}
-	*/
 	static auto GetImp(const V& ...v) {
 		constexpr static auto imps = ToArray(GetImpRecur(UnitList<>{}, MakeList(BoundTypes(Decay(Type<V>{}))...)));
 		return Subscript(imps, BoundTypeIndex(v)...);
@@ -257,16 +237,16 @@ public:
 
 #if 1
 #define DEFINE_FUNCTION(fn)\
-	namespace Fn {\
-		struct PPCAT(fn,_t) {\
+	namespace Hel {\
+		constexpr static struct PPCAT(fn,_ft) {\
 			template <class ...A> constexpr decltype(auto) operator()(A&& ...a) const { return fn(static_cast<A&&>(a)...); }\
-		};\
+		} PPCAT(fn,_f){};\
 	}
 #define DEFINE_MULTIMETHOD(fn)\
 	DEFINE_FUNCTION(fn)\
 	namespace VariantNS {\
 		template <class ...V> constexpr decltype(auto) fn(V&& ...v) {\
-			return MultiMethod<Fn::PPCAT(fn,_t), V...>::GetImp(v...)(static_cast<V&&>(v)...);\
+			return MultiMethod<Hel::PPCAT(fn,_ft), V...>::GetImp(v...)(static_cast<V&&>(v)...);\
 		}\
 	}
 #endif
