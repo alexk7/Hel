@@ -30,7 +30,7 @@ int main(int argc, const char * argv[]) {
 			vector<string> code;
 			while (auto pLine = GetLine(pFile.get())) {
 				string line{pLine};
-				if (line != "#pragma once" && !StartsWith(line, "#include \""s)) {
+				if (!line.empty() && line != "#pragma once" && !StartsWith(line, "#include \""s)) {
 					static const regex r{"[_a-zA-Z][_a-zA-Z0-9]*"};
 					sregex_iterator i{begin(line), end(line), r}, iEnd;
 					for_each(i, iEnd, [&](auto m) {

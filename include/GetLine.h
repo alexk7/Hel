@@ -17,5 +17,4 @@ public:
 		return data.line_;
 	}
 };
-
 static const GetLine_t GetLine{};

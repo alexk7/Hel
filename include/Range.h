@@ -4,7 +4,7 @@ template <class T, class U> class Range {
 	U end_;
 public:
 	template <class B, class E> Range(B&& b, E&& e) : begin_(b), end_(e) {}
-	friend constexpr T begin(const Range& r) { return r.begin_; }
-	friend constexpr T end(const Range& r) { return r.end_; }
-	friend constexpr auto empty(const Range& r) { return r.begin_ == r.end_; }
+	friend constexpr T Begin(const Range& r) { return r.begin_; }
+	friend constexpr U End(const Range& r) { return r.end_; }
 };
+template <class T, class U> constexpr auto Empty(const Range<T, U>& r) { return Begin(r) == End(r); }

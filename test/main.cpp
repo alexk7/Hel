@@ -1,64 +1,29 @@
+#include "And.h"
 #include "Constant.h"
+#include "ConstantFunction.h"
 #include "False.h"
+#include "MakeArray.h"
+#include "MakeUniquePtr.h"
 #include "Noop.h"
+#include "PPCAT.h"
 #include "True.h"
 #include "Type.h"
 #include "Unit.h"
 #include "UnitList.h"
+#include <algorithm>
 #include <array>
 #include <assert.h>
-#include <cxxabi.h>
 #include <iostream>
 #include <stdexcept>
 #include <tuple>
 #include <type_traits>
-#include <typeinfo>
 #include <utility>
-#include <algorithm>
-#include "MakeArray.h"
-#include "MakeUniquePtr.h"
-#include "ConstantFunction.h"
 
-#define PPCAT_NX(A, B) A ## B
-#define PPCAT(A, B) PPCAT_NX(A, B)
+struct Void : Unit<Void> {};
+template <class T, class ...U> constexpr auto Front(UnitList<T, U...>) { return T{}; }
+template <class T, class ...U> constexpr auto Front(UnitList<>) { return Void{}; }
+template <class T, class ...U> constexpr auto Tail(UnitList<T, U...>) { return UnitList<U...>{}; }
 
-constexpr struct And_t : ConstantFunction<And_t> {
-	using ConstantFunction::operator();
-	constexpr auto operator()() const { return True; }
-	template <class T, class ...U> constexpr auto operator()(const T& t, const U&... u) const {
-		bool b = static_cast<bool>(t);
-		Noop((b = b && u)...);
-		return b;
-	}
-} And{};
-
-constexpr struct Or_t : ConstantFunction<Or_t> {
-	using ConstantFunction::operator();
-	constexpr auto operator()() const { return False; }
-	template <class T, class ...U> constexpr auto operator()(const T& t, const U&... u) const {
-		bool b = static_cast<bool>(t);
-		Noop((b = b || u)...);
-		return b;
-	}
-} Or{};
-
-constexpr struct Multiply_t : ConstantFunction<Multiply_t> {
-	using ConstantFunction::operator();
-	template <class T, class ...U> constexpr T operator()(T t, const U& ...u) const {
-		Noop((t *= u)...);
-		return t;
-	}
-} Multiply{};
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Functions
-
-template <class T> std::string TypeName(Type<T>) {
-	return MakeUniquePtr(abi::__cxa_demangle(typeid(T).name(), 0, 0, 0), free).get();
-}
-
-template <class T, T t> constexpr auto Value(Constant<T, t>) { return t; }
 template <class T, T... t> constexpr auto ToArray(UnitList<Constant<T, t>...>) {
 	return std::array<T, sizeof...(t)>{ t... };
 }
@@ -247,6 +212,7 @@ template <class F, class ...V> class MultiMethod {
 		return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, A{}), static_cast<V&&>(v))...);
 	}
 	[[noreturn]] static R NullImp(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
+	/*
 	template <class AL> constexpr static auto GetImpRecur(AL al) {
 		return decltype(Unpack(al, [](auto... a) {
 			return If(And((a != Type<void>{})...),
@@ -259,10 +225,32 @@ template <class F, class ...V> class MultiMethod {
 			return MakeList(GetImpRecur(Append(Type<void>{}, AL{}), BL2{}...),
 							GetImpRecur(Append(decltype(a){}, AL{}), BL2{}...)...);
 		})){};
+	}*/
+	template <class AL, class BLL> constexpr static auto GetImpRecur(AL, BLL) {
+		return decltype(If(Size(BLL{}) == 0_z,
+				  [](auto) {
+					  return Unpack(AL{}, [](auto... a) {
+						  return If(And((a != Type<void>{})...),
+									[](auto... b) { return Constant<R (*)(V&&...), Imp<decltype(b)...>>{}; },
+									[](auto...) { return Constant<R (*)(V&&...), NullImp>{}; })(a...);
+					  });
+				  },
+				  [](auto bll) {
+					  return Unpack(Front(bll), [=](auto... b) {
+						  return MakeList(GetImpRecur(Append(Type<void>{}, AL{}), Tail(bll)),
+										  GetImpRecur(Append(decltype(b){}, AL{}), Tail(bll))...);
+					  });
+				  })(BLL{})){};
 	}
 public:
+	/*
 	static auto GetImp(const V& ...v) {
 		constexpr static auto imps = ToArray(GetImpRecur(UnitList<>{}, BoundTypes(Decay(Type<V>{}))...));
+		return Subscript(imps, BoundTypeIndex(v)...);
+	}
+	*/
+	static auto GetImp(const V& ...v) {
+		constexpr static auto imps = ToArray(GetImpRecur(UnitList<>{}, MakeList(BoundTypes(Decay(Type<V>{}))...)));
 		return Subscript(imps, BoundTypeIndex(v)...);
 	}
 };
