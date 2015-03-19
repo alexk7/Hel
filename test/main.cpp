@@ -121,14 +121,15 @@ template <class T, class U, class ...W, class ...L> constexpr auto CartesianProd
 					   CartesianProduct(UnitList<U, W...>{}, L{}...));
 }
 
-template <class F> class Recursive_ft {
+template <class F> class Recursive {
 	F f_;
 public:
-	Recursive_ft(F f) : f_(std::move(f)) {}
+	Recursive(const F& f) : f_(f) {}
+	Recursive(F&& f) : f_(static_cast<F&&>(f)) {}
 	template <class ...A> constexpr auto operator()(A&& ...a) const { return f_(*this, static_cast<A&&>(a)...); }
 };
 
-template <class F> constexpr auto Recursive(F&& f) { return Recursive_ft<std::decay_t<F>>{static_cast<F&&>(f)}; }
+template <class F> constexpr auto MakeRecursive(F&& f) { return Recursive<std::decay_t<F>>{static_cast<F&&>(f)}; }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -222,13 +223,14 @@ template <class F, class ...V> class MultiMethod {
 	[[noreturn]] static R NullImp(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
 public:
 	static auto GetImp(const V& ...v) {
-		constexpr static auto imps = ToArray(decltype(Recursive([](const auto& self, auto bll, auto al) {
+		constexpr static auto nullImp = Constant<R (*)(V&&...), NullImp>{};
+		constexpr static auto imps = ToArray(decltype(MakeRecursive([](const auto& self, auto bll, auto al) {
 			return If(Size(bll) == 0_z,
 					  [&](auto) {
 						  return Unpack(al, [](auto... a) {
 							  return If(And((a != Type<void>{})...),
 										[](auto... a) { return Constant<R (*)(V&&...), Imp<decltype(a)...>>{}; },
-										[](auto...) { return Constant<R (*)(V&&...), NullImp>{}; })(a...);
+										[](auto...) { return nullImp; })(a...);
 						  });
 					  },
 					  [&](auto bll) {
