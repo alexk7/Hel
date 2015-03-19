@@ -224,7 +224,7 @@ template <class F, class ...V> class MultiMethod {
 public:
 	static auto GetImp(const V& ...v) {
 		constexpr static auto nullImp = Constant<R (*)(V&&...), NullImp>{};
-		constexpr static auto imps = ToArray(decltype(MakeRecursive([](const auto& self, auto bll, auto al) {
+		constexpr static auto imps = ToArray(decltype(MakeRecursive([](auto self, auto bll, auto al) {
 			return If(Size(bll) == 0_z,
 					  [&](auto) {
 						  return Unpack(al, [](auto... a) {
