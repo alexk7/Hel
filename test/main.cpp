@@ -1,4 +1,5 @@
 #include "And.h"
+#include "Array.h"
 #include "Constant.h"
 #include "ConstantFunction.h"
 #include "False.h"
@@ -25,7 +26,7 @@ template <class T, class ...U> constexpr auto Front(UnitList<>) { return Void{};
 template <class T, class ...U> constexpr auto Tail(UnitList<T, U...>) { return UnitList<U...>{}; }
 
 template <class T, T... t> constexpr auto ToArray(UnitList<Constant<T, t>...>) {
-	return std::array<T, sizeof...(t)>{ t... };
+	return Array<T, sizeof...(t)>{{ t... }};
 }
 template <class ...T> constexpr auto ToArray(UnitList<T...>) {
 	return MakeArray(ToArray(T{})...);
@@ -205,10 +206,52 @@ template <class T, class U> std::enable_if_t<Type<T>{} == Type<U&&>{}, T> GetAs(
 	return static_cast<T>(u);
 }
 
-template <class A> decltype(auto) Subscript(A&& a, size_t s) { return static_cast<A&&>(a)[s]; }
-template <class A, class ...S> decltype(auto) Subscript(A&& a, size_t s1, size_t s2, S ...s3) {
-	return Subscript(static_cast<A&&>(a)[s1], s2, s3...);
-}
+constexpr static struct Subscript_t {
+	template <class T, size_t size> decltype(auto) operator()(const Array<T, size>& a, size_t i) const {
+		return a.value[i];
+	}
+	template <class T, size_t size, class ...S> decltype(auto) operator()(const Array<T, size>& a, size_t i, size_t i2, S ...i3) const {
+		return Subscript_t{}(a.value[i], i2, i3...);
+	}
+} Subscript{};
+
+/*
+constexpr static struct While_t {
+	struct Step {
+		template <class P, class S, class F> constexpr decltype(auto) operator()(P&& p, S&& s, F&& f) const {
+			return While_t{}(static_cast<P&&>(p), f(static_cast<S&&>(s)), static_cast<F&&>(f));
+		}
+	};
+	struct End {
+		template <class P, class S, class F> constexpr decltype(auto) operator()(P&&, S&& s, F&&) const {
+			return static_cast<S&&>(s);
+		}
+	};
+	template <class P, class S, class F> constexpr decltype(auto) operator()(P&& p, S&& s, F&& f) const {
+		return If(p(s), Step{}, End{})(static_cast<P&&>(p), static_cast<S&&>(s), static_cast<F&&>(f));
+	}
+} While{};
+
+constexpr static struct Empty_t : ConstantFunction<Empty_t> {
+	template <class L> constexpr auto operator()(L&& l) const { return Size(l) == 0_z; }
+} Empty{};
+
+constexpr static struct FoldL_t {
+	struct Step {
+		template <class P, class S, class F> constexpr decltype(auto) operator()(P&& p, S&& s, F&& f) const {
+			return While_t{}(static_cast<P&&>(p), f(static_cast<S&&>(s)), static_cast<F&&>(f));
+		}
+	};
+	struct End {
+		template <class P, class S, class F> constexpr decltype(auto) operator()(P&&, S&& s, F&&) const {
+			return static_cast<S&&>(s);
+		}
+	};
+	template <class F, class S> constexpr decltype(auto) operator()(F&& f, S&& s, L&& l) const {
+		return If(Empty
+	}
+} FoldL{};
+*/
 
 template <class F, class ...V> class MultiMethod {
 	constexpr static auto all_ = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
@@ -244,6 +287,30 @@ public:
 		return Subscript(imps, BoundTypeIndex(v)...);
 	}
 };
+
+//*
+static void f1() {}
+static void f2() {}
+using P = void(*)();
+
+struct F {
+	P value = f1;
+};
+
+struct A {
+	F value[50];
+};
+
+constexpr auto fTest()
+{
+	A a;
+	for (size_t i = 0; i < 25; ++i)
+		a.value[i].value = f2;
+	return a;
+}
+
+constexpr static auto kTest = fTest();
+//*/
 
 #if 1
 #define DEFINE_FUNCTION(fn)\
