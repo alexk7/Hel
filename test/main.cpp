@@ -1,5 +1,6 @@
 #include "And.h"
 #include "Array.h"
+#include "CharConstant.h"
 #include "Constant.h"
 #include "ConstantFunction.h"
 #include "False.h"
@@ -7,8 +8,11 @@
 #include "MakeUniquePtr.h"
 #include "Noop.h"
 #include "PPCAT.h"
+#include "SizeConstant.h"
+#include "Sum.h"
 #include "True.h"
 #include "Type.h"
+#include "TypeName.h"
 #include "Unit.h"
 #include "UnitList.h"
 #include <algorithm>
@@ -25,43 +29,31 @@ template <class T, class ...U> constexpr auto Front(UnitList<T, U...>) { return 
 template <class T, class ...U> constexpr auto Front(UnitList<>) { return Void{}; }
 template <class T, class ...U> constexpr auto Tail(UnitList<T, U...>) { return UnitList<U...>{}; }
 
-template <class T, T... t> constexpr auto ToArray(UnitList<Constant<T, t>...>) {
-	return Array<T, sizeof...(t)>{{ t... }};
+template <class ...T> constexpr auto ToArray(UnitList<Constant<T>...>) {
+	return MakeArray(T::value...);
 }
 template <class ...T> constexpr auto ToArray(UnitList<T...>) {
 	return MakeArray(ToArray(T{})...);
 }
-
-template <class T, T t> constexpr auto operator!(Constant<T, t>) { return Constant<bool, !t>{}; }
-template <class T, T t, class U, U u> constexpr auto operator<(Constant<T, t>, Constant<U, u>) {
-	return Constant<bool, t < u>{};
-}
-template <class T, T t, class U, U u> constexpr auto operator>(Constant<T, t> a, Constant<U, u> b) { return b < a; }
-template <class T, T t, class U, U u> constexpr auto operator<=(Constant<T, t> a, Constant<U, u> b) { return !(b < a); }
-template <class T, T t, class U, U u> constexpr auto operator>=(Constant<T, t> a, Constant<U, u> b) { return !(a < b); }
-
-template <class T> constexpr auto operator==(Unit<T>, Unit<T>) { return Constant<bool, true>{}; }
-template <class T, class U> constexpr auto operator==(Unit<T>, Unit<U>) { return Constant<bool, false>{}; }
-template <class T, class U> constexpr auto operator!=(Unit<T> t, Unit<U> u) { return !(t == u); }
 
 template <class T> T DeclVal(Type<T>);
 template <class T> constexpr auto Decay(Type<T>) { return Type<std::decay_t<T>>{}; }
 template <class T> constexpr auto RemoveRValueReference(Type<T&&>) { return Type<T>{}; }
 template <class T> constexpr auto RemoveRValueReference(Type<T>) { return Type<T>{}; }
 
-template <class T, class Then, class Else> constexpr auto If(Constant<T, 0>, Then, Else v) { return v; }
-template <class T, class Then, class Else> constexpr auto If(Constant<T, 1>, Then v, Else) { return v; }
+template <class Then, class Else> constexpr auto If(BoolConstant<true>, Then v, Else) { return v; }
+template <class Then, class Else> constexpr auto If(BoolConstant<false>, Then, Else v) { return v; }
 
-template <class T, char c> constexpr auto Parse(Type<T>, UnitList<Constant<char, c>>) {
-	return Constant<T, c - '0'>{};
+template <class T, char c> constexpr auto Parse(Type<T>, UnitList<CharConstant<c>>) {
+	return TypedConstant<T, c - '0'>{};
 }
-template <char ...c> constexpr auto operator""_z() { return Parse(Type<size_t>{}, UnitList<Constant<char, c>...>{}); }
+template <char ...c> constexpr auto operator""_z() { return Parse(Type<size_t>{}, UnitList<CharConstant<c>...>{}); }
 
-template <class T, T v, T w> constexpr auto operator+(Constant<T, v>, Constant<T, w>) {
-	return Constant<T, v + w>{};
+template <class T, class U> constexpr auto operator+(Constant<T> a, Constant<U> b) {
+	return Sum(a, b);
 }
 
-template <class ...T> constexpr auto Size(UnitList<T...>) { return Constant<size_t, sizeof...(T)>{}; }
+template <class ...T> constexpr auto Size(UnitList<T...>) { return SizeConstant<sizeof...(T)>{}; }
 template <class ...T> constexpr auto MakeList(Unit<T>...) { return UnitList<T...>{}; }
 template <class ...T, class F> constexpr decltype(auto) Unpack(UnitList<T...>, F f) { return f(T{}...); }
 
@@ -206,14 +198,10 @@ template <class T, class U> std::enable_if_t<Type<T>{} == Type<U&&>{}, T> GetAs(
 	return static_cast<T>(u);
 }
 
-constexpr static struct Subscript_t {
-	template <class T, size_t size> decltype(auto) operator()(const Array<T, size>& a, size_t i) const {
-		return a.value[i];
-	}
-	template <class T, size_t size, class ...S> decltype(auto) operator()(const Array<T, size>& a, size_t i, size_t i2, S ...i3) const {
-		return Subscript_t{}(a.value[i], i2, i3...);
-	}
-} Subscript{};
+template <class T, size_t s> decltype(auto) Subscript(const Array<T, s>& a, size_t i) { return a.value[i]; }
+template <class T, size_t s, class ...S> decltype(auto) Subscript(const Array<T, s>& a, size_t i1, size_t i2, S ...i3) {
+	return Subscript(Subscript(a, i1), i2, i3...);
+}
 
 /*
 constexpr static struct While_t {
@@ -231,26 +219,6 @@ constexpr static struct While_t {
 		return If(p(s), Step{}, End{})(static_cast<P&&>(p), static_cast<S&&>(s), static_cast<F&&>(f));
 	}
 } While{};
-
-constexpr static struct Empty_t : ConstantFunction<Empty_t> {
-	template <class L> constexpr auto operator()(L&& l) const { return Size(l) == 0_z; }
-} Empty{};
-
-constexpr static struct FoldL_t {
-	struct Step {
-		template <class P, class S, class F> constexpr decltype(auto) operator()(P&& p, S&& s, F&& f) const {
-			return While_t{}(static_cast<P&&>(p), f(static_cast<S&&>(s)), static_cast<F&&>(f));
-		}
-	};
-	struct End {
-		template <class P, class S, class F> constexpr decltype(auto) operator()(P&&, S&& s, F&&) const {
-			return static_cast<S&&>(s);
-		}
-	};
-	template <class F, class S> constexpr decltype(auto) operator()(F&& f, S&& s, L&& l) const {
-		return If(Empty
-	}
-} FoldL{};
 */
 
 template <class F, class ...V> class MultiMethod {
@@ -266,14 +234,14 @@ template <class F, class ...V> class MultiMethod {
 	[[noreturn]] static R NullImp(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
 public:
 	static auto GetImp(const V& ...v) {
-		constexpr static auto nullImp = Constant<R (*)(V&&...), NullImp>{};
+		using P = R (*)(V&&...);
 		constexpr static auto imps = ToArray(decltype(MakeRecursive([](auto self, auto bll, auto al) {
 			return If(Size(bll) == 0_z,
-					  [&](auto) {
+					  [&](auto bll) {
 						  return Unpack(al, [](auto... a) {
 							  return If(And((a != Type<void>{})...),
-										[](auto... a) { return Constant<R (*)(V&&...), Imp<decltype(a)...>>{}; },
-										[](auto...) { return nullImp; })(a...);
+										[](auto... a) { return TypedConstant<P, Imp<decltype(a)...>>{}; },
+										[](auto... a) { return TypedConstant<P, NullImp>{}; })(a...);
 						  });
 					  },
 					  [&](auto bll) {

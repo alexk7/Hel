@@ -1,3 +1,3 @@
 #pragma once
-#include "Constant.h"
-constexpr static auto True = Constant<bool, true>{};
+#include "BoolConstant.h"
+constexpr static auto True = BoolConstant<true>{};
