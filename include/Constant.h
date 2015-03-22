@@ -1,12 +1,13 @@
 #pragma once
-#include "Unit.h"
 #include "NonTypeTemplateParameter.h"
+#include "Unit.h"
+#include <type_traits>
 template <class V> struct Constant;
 template <class T, T t> using TypedConstant = Constant<NonTypeTemplateParameter<T, t>>;
 template <bool b> using BoolConstant = TypedConstant<bool, b>;
 template <class V> struct Constant : Unit<Constant<V>> {
-	using type = decltype(V::value);
-	constexpr static auto value = V::value;
+	using type = std::decay_t<decltype(V::value)>;
+	constexpr static type value = V::value;
 	constexpr operator type() const { return value; }
 	constexpr operator BoolConstant<!!value>() const { return {}; }
 };

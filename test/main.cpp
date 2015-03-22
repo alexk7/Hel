@@ -228,20 +228,23 @@ template <class F, class ...V> class MultiMethod {
 			return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
 		})...));
 	})));
-	template <class ...A> static R Imp(V&& ...v) {
-		return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, A{}), static_cast<V&&>(v))...);
-	}
-	[[noreturn]] static R NullImp(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
+	template <class ...A> struct Imp {
+		static R value(V&& ...v) {
+			return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, A{}), static_cast<V&&>(v))...);
+		}
+	};
 public:
 	static auto GetImp(const V& ...v) {
-		using P = R (*)(V&&...);
+		struct NullImp {
+			[[noreturn]] static R value(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
+		};
 		constexpr static auto imps = ToArray(decltype(MakeRecursive([](auto self, auto bll, auto al) {
 			return If(Size(bll) == 0_z,
 					  [&](auto bll) {
 						  return Unpack(al, [](auto... a) {
 							  return If(And((a != Type<void>{})...),
-										[](auto... a) { return TypedConstant<P, Imp<decltype(a)...>>{}; },
-										[](auto... a) { return TypedConstant<P, NullImp>{}; })(a...);
+										[](auto... a) { return Constant<Imp<decltype(a)...>>{}; },
+										[](auto... a) { return Constant<NullImp>{}; })(a...);
 						  });
 					  },
 					  [&](auto bll) {
