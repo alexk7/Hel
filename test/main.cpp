@@ -221,21 +221,26 @@ constexpr static struct While_t {
 } While{};
 */
 
-class StaticLambdaHack {
-	template <class T, class R, class ...A> struct Thunk {
-		static R value(A ...a) { return (*(T*)(0))(static_cast<A>(a)...); }
-	};
-	template <class T, class R, class ...A> constexpr static auto GetThunk(R (T::*)(A...) const) {
-		return Constant<Thunk<T, R, A...>>{};
-	};
-public:
-	template <class T> T* operator+(T) const; //undefined
-	template <class T> constexpr auto operator+=(T*) const {
-		return GetThunk(&T::operator());
-	}
+template <class T> struct UnitLambda {
+	static_assert(std::is_empty<T>{}, "T must be stateless.");
+	template <class ...A>
+	constexpr decltype(auto) operator()(A&& ...a) const { return (*(T*)(0))(UnitLambda<T>{}, static_cast<A&&>(a)...); }
 };
 
-#define STATIC_LAMBDA StaticLambdaHack{} += true ? nullptr : StaticLambdaHack{} + []
+template <class T, class R, class ...A>
+constexpr auto Cast(Type<R(*)(A...)>, UnitLambda<T>) {
+	struct Thunk {
+		static R value(A... a) { return (*(T*)(0))(UnitLambda<T>{}, static_cast<A>(a)...); }
+	};
+	return Constant<Thunk>{};
+}
+
+struct UnitLambdaHack {
+	template <class T> T* operator+(T) const; //undefined
+	template <class T> constexpr auto operator+=(T*) const { return UnitLambda<T>{}; }
+};
+
+#define UNIT_LAMBDA(...) UnitLambdaHack{} += true ? nullptr : UnitLambdaHack{} + [](const auto& self, __VA_ARGS__)
 
 template <class F, class ...V> class MultiMethod {
 	constexpr static auto all_ = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
@@ -246,27 +251,27 @@ template <class F, class ...V> class MultiMethod {
 	})));
 public:
 	static auto GetImp(const V& ...v) {
-		constexpr static auto nullImp = STATIC_LAMBDA(V&&...) -> R {
+		constexpr static auto nullImp = UNIT_LAMBDA(V&&...) -> R {
 			throw std::invalid_argument("Null Variant passed to function.");
 		};
 		constexpr static auto imps = ToArray(decltype(MakeRecursive([](auto self, auto bll, auto al) {
 			return If(Size(bll) == 0_z,
 					  [&](auto bll) {
 						  return Unpack(al, [](auto... a) {
-							  return If(And((a != Type<void>{})...),
-										[](auto... a) {
-											return STATIC_LAMBDA(V&& ...v) -> R {
-												return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, decltype(a){}), static_cast<V&&>(v))...);
-											};
-										},
-										[](auto... a) { return nullImp; })(a...);
+							  return Cast(Type<R(*)(V&&...)>{},
+										  If(And((a != Type<void>{})...),
+											 [](auto... a) {
+												 return UNIT_LAMBDA(V&& ...v) -> R {
+													 return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, decltype(a){}), static_cast<V&&>(v))...);
+												 };
+											 },
+											 [](auto... a) { return nullImp; })(a...));
 						  });
 					  },
 					  [&](auto bll) {
-						  return Unpack(Front(bll), [=](auto... b) {
-							  auto tail = Tail(bll);
-							  return MakeList(self(tail, Append(Type<void>{}, al)),
-											  self(tail, Append(b, al))...);
+						  return Unpack(Front(bll), [&](auto... b) {
+							  return MakeList(self(Tail(bll), Append(Type<void>{}, al)),
+											  self(Tail(bll), Append(b, al))...);
 						  });
 					  })(bll);
 		})(MakeList(BoundTypes(Decay(Type<V>{}))...), UnitList<>{})){});
