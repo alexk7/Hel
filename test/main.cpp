@@ -221,6 +221,19 @@ constexpr static struct While_t {
 } While{};
 */
 
+constexpr static class ToFunctionPointer_t {
+	template <class T, class M, M m, class R, class ...A> struct Thunk {
+		static R value(A ...a) { return (T*)(0)->*m(static_cast<A>(a)...); }
+	};
+public:
+	template <class T, class R, class ...A> constexpr auto operator()(R (T::*mfp)(A...)) const {
+		static_assert(std::is_empty<T>{},
+			"Class must be stateless to allow conversion from `pointer to member function` to `pointer to function`.");
+		return Constant<Thunk<T, R (T::*)(A...), mfp, R, A...>>{};
+	};
+	template <class T> constexpr auto operator()(T) const { return (*this)(&T::operator()); }
+} ToFunctionPointer{};
+
 template <class F, class ...V> class MultiMethod {
 	constexpr static auto all_ = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
 	using R = decltype(DeclVal(Unpack(all_, [](auto ...al) {
@@ -258,30 +271,6 @@ public:
 		return Subscript(imps, BoundTypeIndex(v)...);
 	}
 };
-
-//*
-static void f1() {}
-static void f2() {}
-using P = void(*)();
-
-struct F {
-	P value = f1;
-};
-
-struct A {
-	F value[50];
-};
-
-constexpr auto fTest()
-{
-	A a;
-	for (size_t i = 0; i < 25; ++i)
-		a.value[i].value = f2;
-	return a;
-}
-
-constexpr static auto kTest = fTest();
-//*/
 
 #if 1
 #define DEFINE_FUNCTION(fn)\
