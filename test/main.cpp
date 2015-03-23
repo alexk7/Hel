@@ -221,18 +221,21 @@ constexpr static struct While_t {
 } While{};
 */
 
-constexpr static class ToFunctionPointer_t {
-	template <class T, class M, M m, class R, class ...A> struct Thunk {
-		static R value(A ...a) { return (T*)(0)->*m(static_cast<A>(a)...); }
+class StaticLambdaHack {
+	template <class T, class R, class ...A> struct Thunk {
+		static R value(A ...a) { return (*(T*)(0))(static_cast<A>(a)...); }
+	};
+	template <class T, class R, class ...A> constexpr static auto GetThunk(R (T::*)(A...) const) {
+		return Constant<Thunk<T, R, A...>>{};
 	};
 public:
-	template <class T, class R, class ...A> constexpr auto operator()(R (T::*mfp)(A...)) const {
-		static_assert(std::is_empty<T>{},
-			"Class must be stateless to allow conversion from `pointer to member function` to `pointer to function`.");
-		return Constant<Thunk<T, R (T::*)(A...), mfp, R, A...>>{};
-	};
-	template <class T> constexpr auto operator()(T) const { return (*this)(&T::operator()); }
-} ToFunctionPointer{};
+	template <class T> T* operator+(T) const; //undefined
+	template <class T> constexpr auto operator+=(T*) const {
+		return GetThunk(&T::operator());
+	}
+};
+
+#define STATIC_LAMBDA StaticLambdaHack{} += true ? nullptr : StaticLambdaHack{} + []
 
 template <class F, class ...V> class MultiMethod {
 	constexpr static auto all_ = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
@@ -241,23 +244,22 @@ template <class F, class ...V> class MultiMethod {
 			return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
 		})...));
 	})));
-	template <class ...A> struct Imp {
-		static R value(V&& ...v) {
-			return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, A{}), static_cast<V&&>(v))...);
-		}
-	};
 public:
 	static auto GetImp(const V& ...v) {
-		struct NullImp {
-			[[noreturn]] static R value(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
+		constexpr static auto nullImp = STATIC_LAMBDA(V&&...) -> R {
+			throw std::invalid_argument("Null Variant passed to function.");
 		};
 		constexpr static auto imps = ToArray(decltype(MakeRecursive([](auto self, auto bll, auto al) {
 			return If(Size(bll) == 0_z,
 					  [&](auto bll) {
 						  return Unpack(al, [](auto... a) {
 							  return If(And((a != Type<void>{})...),
-										[](auto... a) { return Constant<Imp<decltype(a)...>>{}; },
-										[](auto... a) { return Constant<NullImp>{}; })(a...);
+										[](auto... a) {
+											return STATIC_LAMBDA(V&& ...v) -> R {
+												return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, decltype(a){}), static_cast<V&&>(v))...);
+											};
+										},
+										[](auto... a) { return nullImp; })(a...);
 						  });
 					  },
 					  [&](auto bll) {
