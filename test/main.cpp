@@ -261,16 +261,16 @@ struct DeclValLambdaHack {
 #define DECLVAL_IF(Cond, Then, Else) If(Cond, DECLVAL_LAMBDA() { return Then; }, DECLVAL_LAMBDA() { return Else; })
 
 template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
-	constexpr static auto all_ = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
-	using R = decltype(DeclVal(Unpack(all_, [](auto ...al) {
+	auto all = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
+	using R = decltype(DeclVal(Unpack(all, [](auto ...al) {
 		return RemoveRValueReference(CommonType(Unpack(al, [](auto ...a) {
 			return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
 		})...));
 	})));
-	constexpr auto bll = MakeList(BoundTypes(Decay(Type<V>{}))...);
-	auto getImps = MakeRecursive([](auto self, auto boundArgListList, auto al) {
+	auto bll = MakeList(BoundTypes(Decay(Type<V>{}))...);
+	auto getImps = MakeRecursive([](auto self, auto bll, auto al) {
 		static auto getImps = self;
-		return If(Size(boundArgListList) == 0_z, DECLVAL_LAMBDA() {
+		return If(Size(bll) == 0_z, DECLVAL_LAMBDA() {
 			return Unpack(delay(al), [](auto ...a) {
 				return Cast(Type<R(*)(V&&...)>{}, If(And((a != Type<void>{})...), STATIC_LAMBDA(V&& ...v) -> R {
 					return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
@@ -279,11 +279,9 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 				}));
 			});
 		}, DECLVAL_LAMBDA() {
-			constexpr static auto bll = delay(decltype(boundArgListList){});
-			constexpr static auto tail = Tail(bll);
-			return Unpack(Front(bll), DECLVAL_LAMBDA(auto... b) {
-				return MakeArray(getImps(tail, Append(Type<void>{}, al)),
-								 getImps(tail, Append(b, al))...);
+			return Unpack(Front(delay(bll)), DECLVAL_LAMBDA(auto... b) {
+				return MakeArray(getImps(Tail(delay(bll)), Append(Type<void>{}, al)),
+								 getImps(Tail(delay(bll)), Append(b, al))...);
 			});
 		})();
 	});
