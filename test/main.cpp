@@ -223,19 +223,20 @@ constexpr static struct While_t {
 
 constexpr static struct Identity_t : ConstantFunction<Identity_t> {
 	using ConstantFunction::operator();
-	template <class T> T operator()(T&& t) const { return static_cast<T&&>(t); }
+	template <class T> constexpr T operator()(T&& t) const { return static_cast<T&&>(t); }
 } Identity{};
 
-template <class T> struct UnitLambda {
-	static_assert(std::is_empty<T>{}, "T must be stateless.");
-	template <class ...A>
-	constexpr decltype(auto) operator()(A&& ...a) const { return (*(T*)(0))(Identity, static_cast<A&&>(a)...); }
+template <class F> struct UnitLambda {
+	static_assert(std::is_empty<F>{}, "T must be stateless.");
+	template <class ...A> constexpr decltype(auto) operator()(A&& ...a) const {
+		return (*(F*)(0))(UnitLambda<F>{}, Identity, static_cast<A&&>(a)...);
+	}
 };
 
-template <class T, class R, class ...A>
-constexpr auto Cast(Type<R(*)(A...)>, UnitLambda<T>) {
+template <class F, class R, class ...A>
+constexpr auto Cast(Type<R(*)(A...)>, UnitLambda<F>) {
 	struct Thunk {
-		static R value(A... a) { return (*(T*)(0))(Identity, static_cast<A>(a)...); }
+		static R value(A... a) { return UnitLambda<F>{}(static_cast<A>(a)...); }
 	};
 	return Constant<Thunk>{};
 }
@@ -245,40 +246,42 @@ struct UnitLambdaHack {
 	template <class T> constexpr auto operator+=(T*) const { return UnitLambda<T>{}; }
 };
 
-#define UNIT_LAMBDA(...) UnitLambdaHack{} += true ? nullptr : UnitLambdaHack{} + [](auto delay, __VA_ARGS__)
+#define UNIT_LAMBDA(...) UnitLambdaHack{} += true ? nullptr : UnitLambdaHack{} + [](auto self, auto delay, ##__VA_ARGS__)
 
-template <class F, class ...V> class MultiMethod {
-	constexpr static auto all_ = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
-	using R = decltype(DeclVal(Unpack(all_, [](auto ...al) {
-		return RemoveRValueReference(CommonType(Unpack(al, [](auto ...a) {
-			return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
-		})...));
-	})));
+template <class F> class MultiMethod {
 public:
-	static auto GetImp(const V& ...v) {
+	template <class ...V> static auto Invoke(V&& ...v) {
+		constexpr static auto all_ = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
+		using R = decltype(DeclVal(Unpack(all_, [](auto ...al) {
+			return RemoveRValueReference(CommonType(Unpack(al, [](auto ...a) {
+				return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
+			})...));
+		})));
 		constexpr static auto nullImp = UNIT_LAMBDA(V&&...) -> R {
 			throw std::invalid_argument("Null Variant passed to function.");
 		};
-		constexpr static auto imps = ToArray(decltype(MakeRecursive([](auto self, auto bll, auto al) {
-			return If(Size(bll) == 0_z,
-					  [&](auto bll) {
-						  return Unpack(al, [](auto... a) {
-							  return Cast(Type<R(*)(V&&...)>{},
-										  If(And((a != Type<void>{})...),
-											 UNIT_LAMBDA(V&& ...v) -> R {
-												 return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
-											 },
-											 nullImp));
+		constexpr auto getImps = UNIT_LAMBDA(auto boundArgListList, auto argList) {
+			constexpr static auto next = decltype(self){};
+			constexpr static auto al = decltype(argList){};
+			return If(Size(boundArgListList) == 0_z,
+					  UNIT_LAMBDA() {
+						  return Unpack(al, UNIT_LAMBDA(auto... a) {
+							  constexpr static auto imp = UNIT_LAMBDA(V&& ...v) -> R {
+								  return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
+							  };
+							  return Cast(Type<R(*)(V&&...)>{}, If(And((a != Type<void>{})...), imp, nullImp));
 						  });
 					  },
-					  [&](auto bll) {
-						  return Unpack(Front(bll), [&](auto... b) {
-							  return MakeList(self(Tail(bll), Append(Type<void>{}, al)),
-											  self(Tail(bll), Append(b, al))...);
+					  UNIT_LAMBDA() {
+						  constexpr static auto bll = delay(decltype(boundArgListList){});
+						  return Unpack(Front(bll), UNIT_LAMBDA(auto... b) {
+							  return MakeList(next(Tail(bll), Append(Type<void>{}, al)),
+											  next(Tail(bll), Append(b, al))...);
 						  });
-					  })(bll);
-		})(MakeList(BoundTypes(Decay(Type<V>{}))...), UnitList<>{})){});
-		return Subscript(imps, BoundTypeIndex(v)...);
+					  })();
+		};
+		constexpr static auto imps = ToArray(decltype(getImps(MakeList(BoundTypes(Decay(Type<V>{}))...), UnitList<>{})){});
+		return Subscript(imps, BoundTypeIndex(v)...)(static_cast<V&&>(v)...);
 	}
 };
 
@@ -293,7 +296,7 @@ public:
 	DEFINE_FUNCTION(fn)\
 	namespace VariantNS {\
 		template <class ...V> constexpr decltype(auto) fn(V&& ...v) {\
-			return MultiMethod<Hel::PPCAT(fn,_ft), V...>::GetImp(v...)(static_cast<V&&>(v)...);\
+			return MultiMethod<Hel::PPCAT(fn,_ft)>::Invoke(static_cast<V&&>(v)...);\
 		}\
 	}
 #endif
