@@ -260,23 +260,23 @@ public:
 		constexpr static auto nullImp = UNIT_LAMBDA(V&&...) -> R {
 			throw std::invalid_argument("Null Variant passed to function.");
 		};
+		constexpr static auto getImp = UNIT_LAMBDA(auto ...a) {
+			constexpr static auto imp = UNIT_LAMBDA(V&& ...v) -> R {
+				return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
+			};
+			return Cast(Type<R(*)(V&&...)>{}, If(And((a != Type<void>{})...), imp, nullImp));
+		};
 		constexpr auto getImps = UNIT_LAMBDA(auto boundArgListList, auto argList) {
 			constexpr static auto next = decltype(self){};
-			constexpr static auto al = decltype(argList){};
+			constexpr static auto al = delay(decltype(argList){});
 			return If(Size(boundArgListList) == 0_z,
-					  UNIT_LAMBDA() {
-						  return Unpack(al, UNIT_LAMBDA(auto... a) {
-							  constexpr static auto imp = UNIT_LAMBDA(V&& ...v) -> R {
-								  return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
-							  };
-							  return Cast(Type<R(*)(V&&...)>{}, If(And((a != Type<void>{})...), imp, nullImp));
-						  });
-					  },
+					  UNIT_LAMBDA() { return Unpack(al, delay(getImp)); },
 					  UNIT_LAMBDA() {
 						  constexpr static auto bll = delay(decltype(boundArgListList){});
+						  constexpr static auto tail = Tail(bll);
 						  return Unpack(Front(bll), UNIT_LAMBDA(auto... b) {
-							  return MakeList(next(Tail(bll), Append(Type<void>{}, al)),
-											  next(Tail(bll), Append(b, al))...);
+							  return MakeList(next(tail, Append(Type<void>{}, al)),
+											  next(tail, Append(b, al))...);
 						  });
 					  })();
 		};
