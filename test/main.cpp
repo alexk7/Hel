@@ -268,9 +268,9 @@ public:
 		};
 		constexpr auto getImps = UNIT_LAMBDA(auto boundArgListList, auto argList) {
 			constexpr static auto next = decltype(self){};
-			constexpr static auto al = delay(decltype(argList){});
+			constexpr static auto al = decltype(argList){};
 			return If(Size(boundArgListList) == 0_z,
-					  UNIT_LAMBDA() { return Unpack(al, delay(getImp)); },
+					  UNIT_LAMBDA() { return Unpack(delay(al), getImp); },
 					  UNIT_LAMBDA() {
 						  constexpr static auto bll = delay(decltype(boundArgListList){});
 						  constexpr static auto tail = Tail(bll);
