@@ -221,16 +221,21 @@ constexpr static struct While_t {
 } While{};
 */
 
+constexpr static struct Identity_t : ConstantFunction<Identity_t> {
+	using ConstantFunction::operator();
+	template <class T> T operator()(T&& t) const { return static_cast<T&&>(t); }
+} Identity{};
+
 template <class T> struct UnitLambda {
 	static_assert(std::is_empty<T>{}, "T must be stateless.");
 	template <class ...A>
-	constexpr decltype(auto) operator()(A&& ...a) const { return (*(T*)(0))(UnitLambda<T>{}, static_cast<A&&>(a)...); }
+	constexpr decltype(auto) operator()(A&& ...a) const { return (*(T*)(0))(Identity, static_cast<A&&>(a)...); }
 };
 
 template <class T, class R, class ...A>
 constexpr auto Cast(Type<R(*)(A...)>, UnitLambda<T>) {
 	struct Thunk {
-		static R value(A... a) { return (*(T*)(0))(UnitLambda<T>{}, static_cast<A>(a)...); }
+		static R value(A... a) { return (*(T*)(0))(Identity, static_cast<A>(a)...); }
 	};
 	return Constant<Thunk>{};
 }
@@ -240,7 +245,7 @@ struct UnitLambdaHack {
 	template <class T> constexpr auto operator+=(T*) const { return UnitLambda<T>{}; }
 };
 
-#define UNIT_LAMBDA(...) UnitLambdaHack{} += true ? nullptr : UnitLambdaHack{} + [](const auto& self, __VA_ARGS__)
+#define UNIT_LAMBDA(...) UnitLambdaHack{} += true ? nullptr : UnitLambdaHack{} + [](auto delay, __VA_ARGS__)
 
 template <class F, class ...V> class MultiMethod {
 	constexpr static auto all_ = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
@@ -260,12 +265,10 @@ public:
 						  return Unpack(al, [](auto... a) {
 							  return Cast(Type<R(*)(V&&...)>{},
 										  If(And((a != Type<void>{})...),
-											 [](auto... a) {
-												 return UNIT_LAMBDA(V&& ...v) -> R {
-													 return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, decltype(a){}), static_cast<V&&>(v))...);
-												 };
+											 UNIT_LAMBDA(V&& ...v) -> R {
+												 return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
 											 },
-											 [](auto... a) { return nullImp; })(a...));
+											 nullImp));
 						  });
 					  },
 					  [&](auto bll) {
