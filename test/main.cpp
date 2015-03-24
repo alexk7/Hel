@@ -231,33 +231,32 @@ constexpr static struct Identity_t : ConstantFunction<Identity_t> {
 	template <class T> constexpr T operator()(T&& t) const { return static_cast<T&&>(t); }
 } Identity{};
 
-template <class F> struct UnitLambda {
-	static_assert(std::is_empty<F>{}, "T must be stateless.");
-	template <class ...A> constexpr decltype(auto) operator()(A&& ...a) const {
-		return (*(F*)(0))(Identity, static_cast<A&&>(a)...);
+template <class F> struct StaticLambda {
+	static_assert(std::is_empty<F>{}, "F must be stateless.");
+	template <class ...A> decltype(auto) operator()(A&& ...a) const {
+		return (*static_cast<const F*>(nullptr))(Identity, static_cast<A&&>(a)...);
 	}
 };
-struct UnitLambdaHack {
-	template <class T> T* operator+(T) const { return nullptr; }
-	template <class T> constexpr auto operator+=(T*) const { return UnitLambda<T>{}; }
+struct StaticLambdaHack {
+	template <class F> auto operator+(F) const { return StaticLambda<F>{}; }
 };
-#define UNIT_LAMBDA(...) UnitLambdaHack{} += true ? nullptr : UnitLambdaHack{} + [](auto delay, ##__VA_ARGS__)
-template <class F, class R, class ...A> constexpr auto Cast(Type<R(*)(A...)>, UnitLambda<F>) {
+#define STATIC_LAMBDA(...) StaticLambdaHack{} + [&](auto delay, ##__VA_ARGS__)
+template <class F, class R, class ...A> auto Cast(Type<R(*)(A...)>, StaticLambda<F>) {
 	struct Thunk {
-		static R value(A... a) { return UnitLambda<F>{}(static_cast<A>(a)...); }
+		static R value(A... a) { return StaticLambda<F>{}(static_cast<A>(a)...); }
 	};
 	return Constant<Thunk>{};
 }
 
 template <class F> struct DeclValLambda {
-	template <class ...A> constexpr auto operator()(A&& ...a) const
-		-> decltype(std::declval<F>()(Identity, static_cast<A&&>(a)...));
+	template <class ...A> decltype(auto) operator()(A&& ...a) const {
+		return std::declval<F>()(Identity, static_cast<A&&>(a)...);
+	}
 };
 struct DeclValLambdaHack {
-	template <class T> T* operator+(T) const { return nullptr; }
-	template <class T> constexpr auto operator+=(T*) const { return DeclValLambda<T>{}; }
+	template <class F> auto operator+(F) const { return DeclValLambda<F>{}; }
 };
-#define DECLVAL_LAMBDA(...) DeclValLambdaHack{} += true ? nullptr : DeclValLambdaHack{} + [&](auto delay, ##__VA_ARGS__)
+#define DECLVAL_LAMBDA(...) DeclValLambdaHack{} + [&](auto delay, ##__VA_ARGS__)
 
 #define DECLVAL_IF(Cond, Then, Else) If(Cond, DECLVAL_LAMBDA() { return Then; }, DECLVAL_LAMBDA() { return Else; })
 
@@ -273,9 +272,9 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 		static auto getImps = self;
 		return If(Size(boundArgListList) == 0_z, DECLVAL_LAMBDA() {
 			return Unpack(delay(al), [](auto ...a) {
-				return Cast(Type<R(*)(V&&...)>{}, If(And((a != Type<void>{})...), UNIT_LAMBDA(V&& ...v) -> R {
+				return Cast(Type<R(*)(V&&...)>{}, If(And((a != Type<void>{})...), STATIC_LAMBDA(V&& ...v) -> R {
 					return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
-				}, UNIT_LAMBDA(V&&...) -> R {
+				}, STATIC_LAMBDA(V&&...) -> R {
 					throw std::invalid_argument("Null Variant passed to function.");
 				}));
 			});
