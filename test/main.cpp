@@ -255,7 +255,7 @@ template <class F> struct DeclValLambda {
 };
 struct DeclValLambdaHack {
 	template <class T> T* operator+(T) const { return nullptr; }
-	template <class T> constexpr auto operator+=(T*) const { return UnitLambda<T>{}; }
+	template <class T> constexpr auto operator+=(T*) const { return DeclValLambda<T>{}; }
 };
 #define DECLVAL_LAMBDA(...) DeclValLambdaHack{} += true ? nullptr : DeclValLambdaHack{} + [&](auto delay, ##__VA_ARGS__)
 
@@ -268,10 +268,9 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 			return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
 		})...));
 	})));
-	auto bll = MakeList(BoundTypes(Decay(Type<V>{}))...);
-	auto getImps = MakeRecursive([](auto self, auto boundArgListList, auto argList) {
+	constexpr auto bll = MakeList(BoundTypes(Decay(Type<V>{}))...);
+	auto getImps = MakeRecursive([](auto self, auto boundArgListList, auto al) {
 		static auto getImps = self;
-		constexpr static auto al = decltype(argList){};
 		return If(Size(boundArgListList) == 0_z, DECLVAL_LAMBDA() {
 			return Unpack(delay(al), [](auto ...a) {
 				return Cast(Type<R(*)(V&&...)>{}, If(And((a != Type<void>{})...), UNIT_LAMBDA(V&& ...v) -> R {
