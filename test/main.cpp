@@ -42,10 +42,14 @@ template <class T> constexpr auto RemoveRValueReference(Type<T&&>) { return Type
 template <class T> constexpr auto RemoveRValueReference(Type<T>) { return Type<T>{}; }
 
 constexpr static struct If_t : ConstantFunction<If_t> {
-	template <class Then, class Else> constexpr auto operator()(BoolConstant<true>, Then t, Else) const { return t; }
-	template <class Then, class Else> constexpr auto operator()(BoolConstant<false>, Then, Else e) const { return e; }
-	template <class Cond, class Then, class Else> constexpr auto operator()(Constant<Cond>, Then t, Else e) const {
-		return (*this)(BoolConstant<static_cast<bool>(Cond::value)>{}, t, e);
+	template <class T, class U> constexpr decltype(auto) operator()(BoolConstant<true>, T&& t, U&&) const {
+		return static_cast<T&&>(t);
+	}
+	template <class T, class U> constexpr decltype(auto) operator()(BoolConstant<false>, T&&, U&& u) const {
+		return static_cast<U&&>(u);
+	}
+	template <class C, class T, class U> constexpr auto operator()(Constant<C>, T&& t, U&& u) const {
+		return (*this)(BoolConstant<static_cast<bool>(C::value)>{}, static_cast<T&&>(t), static_cast<U&&>(u));
 	}
 } If{};
 
@@ -232,7 +236,7 @@ constexpr static struct Identity_t : ConstantFunction<Identity_t> {
 } Identity{};
 
 #define STATIC_IF(Cond, Then, Else)\
-	If(BoolConstant<Cond>{}, [&](auto delay) { return Then; }, [&](auto delay) { return Else; })(Identity)
+	If(Cond, [&](auto delay) { return Then; }, [&](auto delay) { return Else; })(Identity)
 
 template <class F> struct StaticLambda {
 	static_assert(std::is_empty<F>{}, "F must be stateless.");
@@ -261,7 +265,7 @@ struct DeclValLambdaHack {
 };
 #define DECLVAL_LAMBDA(...) DeclValLambdaHack{} + [&](auto delay, ##__VA_ARGS__)
 
-#define DECLVAL_IF(Cond, Then, Else) If(Cond, DECLVAL_LAMBDA() { return Then; }, DECLVAL_LAMBDA() { return Else; })()
+template <class ...T> constexpr auto Count(const T&...) { return SizeConstant<sizeof...(T)>{}; }
 
 template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 	using R = decltype(DeclVal(Unpack(CartesianProduct(BoundTypes(Decay(Type<V>{}))...), [](auto ...al) {
@@ -277,7 +281,9 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 			auto nullImps = getNullImps(Tail(delay(bll)));
 			return MakeArray(nullImps, ((void)b, nullImps)...);
 		};
-		return DECLVAL_IF(Size(bll) == 0_z, Constant<NullImp>{}, Unpack(Front(delay(bll)), iter));
+		return STATIC_IF(Size(bll) == 0_z,
+						 Constant<NullImp>{},
+						 Unpack(Front(delay(bll)), iter));
 	});
 	auto getImp = DECLVAL_LAMBDA(auto ...a) {
 		auto imp = STATIC_LAMBDA(V&&... v) -> R { //Workaround for https://llvm.org/bugs/show_bug.cgi?id=22990
@@ -290,14 +296,18 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 			auto tail = Tail(delay(bll));
 			return MakeArray(getNullImps(tail), getImps(tail, Append(b, al))...);
 		};
-		return DECLVAL_IF(Size(bll) == 0_z, Unpack(delay(al), getImp), Unpack(Front(delay(bll)), iter));
+		return STATIC_IF(Size(bll) == 0_z,
+						 Unpack(delay(al), getImp),
+						 Unpack(Front(delay(bll)), iter));
 	});
 	constexpr static auto imps = decltype(getImps(MakeList(BoundTypes(Decay(Type<V>{}))...), UnitList<>{}))::value;
-	auto findImp = MakeRecursive([](const auto& findImp, const auto& imps, size_t i1, auto ...i2) {
+	auto callImp = MakeRecursive([&](const auto& callImp, const auto& imps, size_t i1, auto ...i2) {
 		const auto& found = imps.value[i1];
-		return STATIC_IF(sizeof...(i2) == 0, found, delay(findImp)(found, i2...));
+		return STATIC_IF(Count(i2...) == 0_z,
+						 delay(found)(static_cast<V&&>(v)...),
+						 delay(callImp)(found, i2...));
 	});
-	return findImp(imps, BoundTypeIndex(v)...)(static_cast<V&&>(v)...);
+	return callImp(imps, BoundTypeIndex(v)...);
 }
 
 #if 1
