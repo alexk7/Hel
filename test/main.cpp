@@ -258,7 +258,7 @@ struct DeclValLambdaHack {
 };
 #define DECLVAL_LAMBDA(...) DeclValLambdaHack{} + [&](auto delay, ##__VA_ARGS__)
 
-#define DECLVAL_IF(Cond, Then, Else) If(Cond, DECLVAL_LAMBDA() { return Then; }, DECLVAL_LAMBDA() { return Else; })
+#define DECLVAL_IF(Cond, Then, Else) If(Cond, DECLVAL_LAMBDA() { return Then; }, DECLVAL_LAMBDA() { return Else; })()
 
 template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 	auto all = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
@@ -268,20 +268,31 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 		})...));
 	})));
 	auto bll = MakeList(BoundTypes(Decay(Type<V>{}))...);
-	auto getImps = MakeRecursive([](auto self, auto bll, auto al) {
-		static auto getImps = self;
+	auto getNullImps = MakeRecursive(DECLVAL_LAMBDA(auto getNullImps, auto bll) {
 		return If(Size(bll) == 0_z, DECLVAL_LAMBDA() {
-			return Unpack(delay(al), [](auto ...a) {
-				return Cast(Type<R(*)(V&&...)>{}, If(And((a != Type<void>{})...), STATIC_LAMBDA(V&& ...v) -> R {
-					return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
-				}, STATIC_LAMBDA(V&&...) -> R {
-					throw std::invalid_argument("Null Variant passed to function.");
-				}));
+			return Cast(Type<R(*)(V&&...)>{}, STATIC_LAMBDA(V&&...) -> R {
+				throw std::invalid_argument("Null Variant passed to function.");
 			});
 		}, DECLVAL_LAMBDA() {
 			return Unpack(Front(delay(bll)), DECLVAL_LAMBDA(auto... b) {
-				return MakeArray(getImps(Tail(delay(bll)), Append(Type<void>{}, al)),
-								 getImps(Tail(delay(bll)), Append(b, al))...);
+				auto tail = Tail(delay(bll));
+				auto nullImps = getNullImps(tail);
+				return MakeArray(nullImps, ((void)b, nullImps)...);
+			});
+		})();
+	});
+	auto getImps = MakeRecursive(DECLVAL_LAMBDA(auto getImps, auto bll, auto al) {
+		return If(Size(bll) == 0_z, DECLVAL_LAMBDA() {
+			return Unpack(delay(al), [](auto ...a) {
+				return Cast(Type<R(*)(V&&...)>{}, STATIC_LAMBDA(V&& ...v) -> R {
+					return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
+				});
+			});
+		}, DECLVAL_LAMBDA() {
+			return Unpack(Front(delay(bll)), DECLVAL_LAMBDA(auto... b) {
+				auto tail = Tail(delay(bll));
+				auto nullImps = getNullImps(tail);
+				return MakeArray(nullImps, getImps(tail, Append(b, al))...);
 			});
 		})();
 	});
