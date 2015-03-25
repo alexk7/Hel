@@ -261,19 +261,17 @@ struct DeclValLambdaHack {
 #define DECLVAL_IF(Cond, Then, Else) If(Cond, DECLVAL_LAMBDA() { return Then; }, DECLVAL_LAMBDA() { return Else; })()
 
 template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
-	auto all = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
-	using R = decltype(DeclVal(Unpack(all, [](auto ...al) {
+	using R = decltype(DeclVal(Unpack(CartesianProduct(BoundTypes(Decay(Type<V>{}))...), [](auto ...al) {
 		return RemoveRValueReference(CommonType(Unpack(al, [](auto ...a) {
 			return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
 		})...));
 	})));
-	auto bll = MakeList(BoundTypes(Decay(Type<V>{}))...);
+	struct NullImp {
+		static R value(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
+	};
 	auto getNullImps = MakeRecursive(DECLVAL_LAMBDA(auto getNullImps, auto bll) {
-		return DECLVAL_IF(Size(bll) == 0_z, Cast(Type<R(*)(V&&...)>{}, STATIC_LAMBDA(V&&...) -> R {
-			throw std::invalid_argument("Null Variant passed to function.");
-		}), Unpack(Front(delay(bll)), DECLVAL_LAMBDA(auto... b) {
-			auto tail = Tail(delay(bll));
-			auto nullImps = getNullImps(tail);
+		return DECLVAL_IF(Size(bll) == 0_z, Constant<NullImp>{}, Unpack(Front(delay(bll)), DECLVAL_LAMBDA(auto... b) {
+			auto nullImps = getNullImps(Tail(delay(bll)));
 			return MakeArray(nullImps, ((void)b, nullImps)...);
 		}));
 	});
@@ -284,11 +282,10 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 			});
 		}), Unpack(Front(delay(bll)), DECLVAL_LAMBDA(auto... b) {
 			auto tail = Tail(delay(bll));
-			auto nullImps = getNullImps(tail);
-			return MakeArray(nullImps, getImps(tail, Append(b, al))...);
+			return MakeArray(getNullImps(tail), getImps(tail, Append(b, al))...);
 		}));
 	});
-	constexpr static auto imps = decltype(getImps(bll, UnitList<>{}))::value;
+	constexpr static auto imps = decltype(getImps(MakeList(BoundTypes(Decay(Type<V>{}))...), UnitList<>{}))::value;
 	return Subscript(imps, BoundTypeIndex(v)...)(static_cast<V&&>(v)...);
 }
 
