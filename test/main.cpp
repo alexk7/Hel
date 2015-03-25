@@ -231,6 +231,9 @@ constexpr static struct Identity_t : ConstantFunction<Identity_t> {
 	template <class T> constexpr T operator()(T&& t) const { return static_cast<T&&>(t); }
 } Identity{};
 
+#define STATIC_IF(Cond, Then, Else)\
+	If(BoolConstant<Cond>{}, [&](auto delay) { return Then; }, [&](auto delay) { return Else; })(Identity)
+
 template <class F> struct StaticLambda {
 	static_assert(std::is_empty<F>{}, "F must be stateless.");
 	template <class ...A> decltype(auto) operator()(A&& ...a) const {
@@ -240,7 +243,7 @@ template <class F> struct StaticLambda {
 struct StaticLambdaHack {
 	template <class F> auto operator+(F) const { return StaticLambda<F>{}; }
 };
-#define STATIC_LAMBDA(...) StaticLambdaHack{} + [&](auto delay, ##__VA_ARGS__)
+#define STATIC_LAMBDA(...) StaticLambdaHack{} + [](auto delay, ##__VA_ARGS__)
 template <class F, class R, class ...A> auto Cast(Type<R(*)(A...)>, StaticLambda<F>) {
 	struct Thunk {
 		static R value(A... a) { return StaticLambda<F>{}(static_cast<A>(a)...); }
@@ -270,23 +273,31 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 		static R value(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
 	};
 	auto getNullImps = MakeRecursive(DECLVAL_LAMBDA(auto getNullImps, auto bll) {
-		return DECLVAL_IF(Size(bll) == 0_z, Constant<NullImp>{}, Unpack(Front(delay(bll)), DECLVAL_LAMBDA(auto... b) {
+		auto iter = DECLVAL_LAMBDA(auto... b) {
 			auto nullImps = getNullImps(Tail(delay(bll)));
 			return MakeArray(nullImps, ((void)b, nullImps)...);
-		}));
+		};
+		return DECLVAL_IF(Size(bll) == 0_z, Constant<NullImp>{}, Unpack(Front(delay(bll)), iter));
 	});
+	auto getImp = DECLVAL_LAMBDA(auto ...a) {
+		auto imp = STATIC_LAMBDA(V&&... v) -> R { //Workaround for https://llvm.org/bugs/show_bug.cgi?id=22990
+			return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
+		};
+		return Cast(Type<R(*)(V&&...)>{}, imp);
+	};
 	auto getImps = MakeRecursive(DECLVAL_LAMBDA(auto getImps, auto bll, auto al) {
-		return DECLVAL_IF(Size(bll) == 0_z, Unpack(delay(al), DECLVAL_LAMBDA(auto ...a) {
-			return Cast(Type<R(*)(V&&...)>{}, STATIC_LAMBDA(V&& ...v) -> R {
-				return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
-			});
-		}), Unpack(Front(delay(bll)), DECLVAL_LAMBDA(auto... b) {
+		auto iter = DECLVAL_LAMBDA(auto... b) {
 			auto tail = Tail(delay(bll));
 			return MakeArray(getNullImps(tail), getImps(tail, Append(b, al))...);
-		}));
+		};
+		return DECLVAL_IF(Size(bll) == 0_z, Unpack(delay(al), getImp), Unpack(Front(delay(bll)), iter));
 	});
 	constexpr static auto imps = decltype(getImps(MakeList(BoundTypes(Decay(Type<V>{}))...), UnitList<>{}))::value;
-	return Subscript(imps, BoundTypeIndex(v)...)(static_cast<V&&>(v)...);
+	auto findImp = MakeRecursive([](const auto& findImp, const auto& imps, size_t i1, auto ...i2) {
+		const auto& found = imps.value[i1];
+		return STATIC_IF(sizeof...(i2) == 0, found, delay(findImp)(found, i2...));
+	});
+	return findImp(imps, BoundTypeIndex(v)...)(static_cast<V&&>(v)...);
 }
 
 #if 1
@@ -401,6 +412,7 @@ DEFINE_MULTIMETHOD(Print)
 DEFINE_MULTIMETHOD(Index)
 DEFINE_MULTIMETHOD(Intersect)
 DEFINE_MULTIMETHOD(Copy)
+DEFINE_MULTIMETHOD(Test3)
 #endif
 
 #if 0
@@ -418,23 +430,44 @@ namespace VariantNS {
 #endif
 
 using namespace std;
-using Shape3 = Variant<Circle, Rectangle, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, Triangle>;
+using Shape3 = Variant<Circle, Rectangle, /*S1, S2, S3, S4, S5, S6, S7, S8, S9, S10,*/ Triangle>;
+
+inline void Test3(const Shape3&, const Shape3&, const Shape3&) {
+	puts(__PRETTY_FUNCTION__);
+}
+
+inline void Test3(Circle, Rectangle, Triangle) {
+	puts(__PRETTY_FUNCTION__);
+}
 
 int main()
 {
-#if 1
-	using Shape2 = Variant<Circle, Rectangle>;
-	Shape2 v, v2;
-	v = Circle{};
-	v2 = Rectangle{};
-	cout << Intersect(v, v) << endl;
-	cout << Intersect(v, v2) << endl;
-	cout << Intersect(v2, v2) << endl;
-	cout << Intersect(v2, v) << endl;
-	cout << Intersect(move(v2), v) << endl;
+#if 0
+	{
+		using Shape2 = Variant<Circle, Rectangle>;
+		Shape2 v, v2, v3;
+		v = Circle{};
+		v2 = Rectangle{};
+		cout << Intersect(v, v) << endl;
+		cout << Intersect(v, v2) << endl;
+		cout << Intersect(v2, v2) << endl;
+		cout << Intersect(v2, v) << endl;
+		cout << Intersect(move(v2), v) << endl;
+	}
 #endif
 
 #if 1
+	{
+		Shape3 v, v2, v3;
+		v = Circle{};
+		v2 = Rectangle{};
+		v3 = Triangle{};
+		Test3(v, v, v);
+		Test3(v, v2, v3);
+	}
+#endif
+
+#if 0
 	Circle c;
 	Rectangle r;
 
