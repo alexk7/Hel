@@ -255,16 +255,6 @@ template <class F, class R, class ...A> auto Cast(Type<R(*)(A...)>, StaticLambda
 	return Constant<Thunk>{};
 }
 
-template <class F> struct DeclValLambda {
-	template <class ...A> decltype(auto) operator()(A&& ...a) const {
-		return std::declval<F>()(Identity, static_cast<A&&>(a)...);
-	}
-};
-struct DeclValLambdaHack {
-	template <class F> auto operator+(F) const { return DeclValLambda<F>{}; }
-};
-#define DECLVAL_LAMBDA(...) DeclValLambdaHack{} + [&](auto delay, ##__VA_ARGS__)
-
 template <class ...T> constexpr auto Count(const T&...) { return SizeConstant<sizeof...(T)>{}; }
 
 template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
@@ -276,36 +266,29 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 	struct NullImp {
 		static R value(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
 	};
-	auto getNullImps = MakeRecursive(DECLVAL_LAMBDA(auto getNullImps, auto bll) {
-		auto iter = DECLVAL_LAMBDA(auto... b) {
+	auto getNullImps = MakeRecursive([&](auto getNullImps, auto bll) {
+		return STATIC_IF(Size(bll) == 0_z, Constant<NullImp>{}, Unpack(Front(delay(bll)), [&](auto... b) {
 			auto nullImps = getNullImps(Tail(delay(bll)));
 			return MakeArray(nullImps, ((void)b, nullImps)...);
-		};
-		return STATIC_IF(Size(bll) == 0_z,
-						 Constant<NullImp>{},
-						 Unpack(Front(delay(bll)), iter));
+		}));
 	});
-	auto getImp = DECLVAL_LAMBDA(auto ...a) {
-		auto imp = STATIC_LAMBDA(V&&... v) -> R { //Workaround for https://llvm.org/bugs/show_bug.cgi?id=22990
+	auto getImp = [&](auto ...a) {
+		//STATIC_LAMBDA instead of local class is a workaround for https://llvm.org/bugs/show_bug.cgi?id=22990
+		auto imp = STATIC_LAMBDA(V&&... v) -> R {
 			return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
 		};
 		return Cast(Type<R(*)(V&&...)>{}, imp);
 	};
-	auto getImps = MakeRecursive(DECLVAL_LAMBDA(auto getImps, auto bll, auto al) {
-		auto iter = DECLVAL_LAMBDA(auto... b) {
+	auto getImps = MakeRecursive([&](auto getImps, auto bll, auto al) {
+		return STATIC_IF(Size(bll) == 0_z, Unpack(delay(al), getImp), Unpack(Front(delay(bll)), [&](auto... b) {
 			auto tail = Tail(delay(bll));
 			return MakeArray(getNullImps(tail), getImps(tail, Append(b, al))...);
-		};
-		return STATIC_IF(Size(bll) == 0_z,
-						 Unpack(delay(al), getImp),
-						 Unpack(Front(delay(bll)), iter));
+		}));
 	});
 	constexpr static auto imps = decltype(getImps(MakeList(BoundTypes(Decay(Type<V>{}))...), UnitList<>{}))::value;
 	auto callImp = MakeRecursive([&](const auto& callImp, const auto& imps, size_t i1, auto ...i2) {
 		const auto& found = imps.value[i1];
-		return STATIC_IF(Count(i2...) == 0_z,
-						 delay(found)(static_cast<V&&>(v)...),
-						 delay(callImp)(found, i2...));
+		return STATIC_IF(Count(i2...) == 0_z, delay(found)(static_cast<V&&>(v)...), delay(callImp)(found, i2...));
 	});
 	return callImp(imps, BoundTypeIndex(v)...);
 }
@@ -331,6 +314,14 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 #define DTOR_TEST_IMPL
 //#define DTOR_TEST_IMPL cout << __PRETTY_FUNCTION__ << endl;
 
+#if 1
+DEFINE_MULTIMETHOD(Print)
+DEFINE_MULTIMETHOD(Index)
+DEFINE_MULTIMETHOD(Intersect)
+DEFINE_MULTIMETHOD(Copy)
+DEFINE_MULTIMETHOD(Test3)
+#endif
+
 struct Circle { ~Circle() { DTOR_TEST_IMPL } };
 struct Rectangle { ~Rectangle() { DTOR_TEST_IMPL } };
 struct Triangle { ~Triangle() { DTOR_TEST_IMPL } };
@@ -344,6 +335,9 @@ struct S7 { ~S7() { DTOR_TEST_IMPL } };
 struct S8 { ~S8() { DTOR_TEST_IMPL } };
 struct S9 { ~S9() { DTOR_TEST_IMPL } };
 struct S10 { ~S10() { DTOR_TEST_IMPL } };
+
+using Shape2 = Variant<Circle, Rectangle>;
+using Shape3 = Variant<Circle, Rectangle, /*S1, S2, S3, S4, S5, S6, S7, S8, S9, S10,*/ Triangle>;
 
 inline bool Intersect(Circle, Rectangle) {
 	puts(__PRETTY_FUNCTION__);
@@ -366,6 +360,23 @@ inline bool Intersect(Rectangle, Rectangle) {
 }
 
 inline bool Intersect(Rectangle&&, Circle) {
+	puts(__PRETTY_FUNCTION__);
+	return false;
+}
+
+inline bool Intersect(const Triangle&, const Triangle&) {
+	puts(__PRETTY_FUNCTION__);
+	return false;
+}
+
+template <class T>
+inline bool Intersect(const Triangle&, const T&) {
+	puts(__PRETTY_FUNCTION__);
+	return false;
+}
+
+template <class T>
+inline bool Intersect(const T&, const Triangle&) {
 	puts(__PRETTY_FUNCTION__);
 	return false;
 }
@@ -417,14 +428,6 @@ inline Triangle Copy(Triangle t) {
 	return t;
 }
 
-#if 1
-DEFINE_MULTIMETHOD(Print)
-DEFINE_MULTIMETHOD(Index)
-DEFINE_MULTIMETHOD(Intersect)
-DEFINE_MULTIMETHOD(Copy)
-DEFINE_MULTIMETHOD(Test3)
-#endif
-
 #if 0
 #define fn Intersect
 namespace Fn {
@@ -440,7 +443,6 @@ namespace VariantNS {
 #endif
 
 using namespace std;
-using Shape3 = Variant<Circle, Rectangle, /*S1, S2, S3, S4, S5, S6, S7, S8, S9, S10,*/ Triangle>;
 
 inline void Test3(const Shape3&, const Shape3&, const Shape3&) {
 	puts(__PRETTY_FUNCTION__);
@@ -452,9 +454,8 @@ inline void Test3(Circle, Rectangle, Triangle) {
 
 int main()
 {
-#if 0
+#if 1
 	{
-		using Shape2 = Variant<Circle, Rectangle>;
 		Shape2 v, v2, v3;
 		v = Circle{};
 		v2 = Rectangle{};
@@ -477,7 +478,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	Circle c;
 	Rectangle r;
 
@@ -507,6 +508,7 @@ int main()
 			s9 = Triangle{};
 
 		try {
+			Intersect(s9, s2);
 			Print(s9);
 			cout << Index(s9) << endl;
 			cout << Index(move(s9)) << endl;
@@ -517,7 +519,7 @@ int main()
 		//cout << "----------" << endl;
 		//s7 = move(s3);
 
-		//cout << "----------" << endl;
+		//cout << "----------" << endl;c
 	}
 
 	cout << "----------" << endl;
