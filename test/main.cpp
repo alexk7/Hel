@@ -269,32 +269,24 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 	})));
 	auto bll = MakeList(BoundTypes(Decay(Type<V>{}))...);
 	auto getNullImps = MakeRecursive(DECLVAL_LAMBDA(auto getNullImps, auto bll) {
-		return If(Size(bll) == 0_z, DECLVAL_LAMBDA() {
-			return Cast(Type<R(*)(V&&...)>{}, STATIC_LAMBDA(V&&...) -> R {
-				throw std::invalid_argument("Null Variant passed to function.");
-			});
-		}, DECLVAL_LAMBDA() {
-			return Unpack(Front(delay(bll)), DECLVAL_LAMBDA(auto... b) {
-				auto tail = Tail(delay(bll));
-				auto nullImps = getNullImps(tail);
-				return MakeArray(nullImps, ((void)b, nullImps)...);
-			});
-		})();
+		return DECLVAL_IF(Size(bll) == 0_z, Cast(Type<R(*)(V&&...)>{}, STATIC_LAMBDA(V&&...) -> R {
+			throw std::invalid_argument("Null Variant passed to function.");
+		}), Unpack(Front(delay(bll)), DECLVAL_LAMBDA(auto... b) {
+			auto tail = Tail(delay(bll));
+			auto nullImps = getNullImps(tail);
+			return MakeArray(nullImps, ((void)b, nullImps)...);
+		}));
 	});
 	auto getImps = MakeRecursive(DECLVAL_LAMBDA(auto getImps, auto bll, auto al) {
-		return If(Size(bll) == 0_z, DECLVAL_LAMBDA() {
-			return Unpack(delay(al), [](auto ...a) {
-				return Cast(Type<R(*)(V&&...)>{}, STATIC_LAMBDA(V&& ...v) -> R {
-					return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
-				});
+		return DECLVAL_IF(Size(bll) == 0_z, Unpack(delay(al), DECLVAL_LAMBDA(auto ...a) {
+			return Cast(Type<R(*)(V&&...)>{}, STATIC_LAMBDA(V&& ...v) -> R {
+				return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
 			});
-		}, DECLVAL_LAMBDA() {
-			return Unpack(Front(delay(bll)), DECLVAL_LAMBDA(auto... b) {
-				auto tail = Tail(delay(bll));
-				auto nullImps = getNullImps(tail);
-				return MakeArray(nullImps, getImps(tail, Append(b, al))...);
-			});
-		})();
+		}), Unpack(Front(delay(bll)), DECLVAL_LAMBDA(auto... b) {
+			auto tail = Tail(delay(bll));
+			auto nullImps = getNullImps(tail);
+			return MakeArray(nullImps, getImps(tail, Append(b, al))...);
+		}));
 	});
 	constexpr static auto imps = decltype(getImps(bll, UnitList<>{}))::value;
 	return Subscript(imps, BoundTypeIndex(v)...)(static_cast<V&&>(v)...);
