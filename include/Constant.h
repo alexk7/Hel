@@ -16,3 +16,6 @@ template <class A, class B> constexpr auto operator==(Constant<A>, Constant<B>) 
 template <class A, class B> constexpr auto operator<(Constant<A>, Constant<B>) {
 	return BoolConstant<A::value < B::value>{};
 }
+template <class A, class B> constexpr auto operator||(Constant<A>, Constant<B>) {
+	return BoolConstant<A::value || B::value>{};
+}

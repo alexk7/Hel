@@ -24,9 +24,7 @@
 #include <type_traits>
 #include <utility>
 
-struct Void : Unit<Void> {};
 template <class T, class ...U> constexpr auto Front(UnitList<T, U...>) { return T{}; }
-template <class T, class ...U> constexpr auto Front(UnitList<>) { return Void{}; }
 template <class T, class ...U> constexpr auto Tail(UnitList<T, U...>) { return UnitList<U...>{}; }
 
 template <class ...T> constexpr auto ToArray(UnitList<Constant<T>...>) {
@@ -66,12 +64,20 @@ template <class ...T> constexpr auto Size(UnitList<T...>) { return SizeConstant<
 template <class ...T> constexpr auto MakeList(Unit<T>...) { return UnitList<T...>{}; }
 template <class ...T, class F> constexpr decltype(auto) Unpack(UnitList<T...>, F f) { return f(T{}...); }
 
+
+constexpr static struct Identity_t : ConstantFunction<Identity_t> {
+	using ConstantFunction::operator();
+	template <class T> constexpr T operator()(T&& t) const { return static_cast<T&&>(t); }
+} Identity{};
+
+#define STATIC_IF(Cond, Then, Else)\
+	If(Cond, [&](auto delay) { return Then; }, [&](auto delay) { return Else; })(Identity)
+
+template <class ...T> constexpr auto Count(const T&...) { return SizeConstant<sizeof...(T)>{}; }
+
 template <class T> constexpr auto CommonType(Type<T> t) { return t; }
-template <class T, class U> constexpr auto CommonType(Type<T>, Type<U>) {
-	return Type<decltype(false ? std::declval<T>() : std::declval<U>())>{};
-}
 template <class T, class U, class ...V> constexpr auto CommonType(Type<T> t, Type<U> u, Type<V> ...v) {
-	return CommonType(CommonType(t, u), v...);
+	return CommonType(Type<decltype(false ? DeclVal(t) : DeclVal(u))>{}, v...);
 }
 
 template <class F, class ...A> constexpr auto ResultType(Type<F> f, UnitList<Type<A>...>) {
@@ -207,11 +213,6 @@ template <class T, class U> std::enable_if_t<Type<T>{} == Type<U&&>{}, T> GetAs(
 	return static_cast<T>(u);
 }
 
-template <class T, size_t s> decltype(auto) Subscript(const Array<T, s>& a, size_t i) { return a.value[i]; }
-template <class T, size_t s, class ...S> decltype(auto) Subscript(const Array<T, s>& a, size_t i1, size_t i2, S ...i3) {
-	return Subscript(Subscript(a, i1), i2, i3...);
-}
-
 /*
 constexpr static struct While_t {
 	struct Step {
@@ -230,39 +231,26 @@ constexpr static struct While_t {
 } While{};
 */
 
-constexpr static struct Identity_t : ConstantFunction<Identity_t> {
-	using ConstantFunction::operator();
-	template <class T> constexpr T operator()(T&& t) const { return static_cast<T&&>(t); }
-} Identity{};
-
-#define STATIC_IF(Cond, Then, Else)\
-	If(Cond, [&](auto delay) { return Then; }, [&](auto delay) { return Else; })(Identity)
-
-template <class F> struct StaticLambda {
-	static_assert(std::is_empty<F>{}, "F must be stateless.");
-	template <class ...A> decltype(auto) operator()(A&& ...a) const {
-		return (*static_cast<const F*>(nullptr))(Identity, static_cast<A&&>(a)...);
-	}
-};
-struct StaticLambdaHack {
-	template <class F> auto operator+(F) const { return StaticLambda<F>{}; }
-};
-#define STATIC_LAMBDA(...) StaticLambdaHack{} + [](auto delay, ##__VA_ARGS__)
-template <class F, class R, class ...A> auto Cast(Type<R(*)(A...)>, StaticLambda<F>) {
-	struct Thunk {
-		static R value(A... a) { return StaticLambda<F>{}(static_cast<A>(a)...); }
+//Defined outside of InvokeMultiMethod as a workaround for https://llvm.org/bugs/show_bug.cgi?id=22990
+template <class F, class R, class ...V> struct InvokeMultiMethodImp {
+	template <class ...A> struct WithArgs {
+		static R value(V ...v) {
+			return F{}(UnsafeGetAs(ApplyCVReference(Type<V>{}, A{}), static_cast<V>(v))...);
+		}
 	};
-	return Constant<Thunk>{};
-}
-
-template <class ...T> constexpr auto Count(const T&...) { return SizeConstant<sizeof...(T)>{}; }
+};
 
 template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
-	using R = decltype(DeclVal(Unpack(CartesianProduct(BoundTypes(Decay(Type<V>{}))...), [](auto ...al) {
-		return RemoveRValueReference(CommonType(Unpack(al, [](auto ...a) {
+	auto boundTypesListList = MakeList(BoundTypes(Decay(Type<V>{}))...);
+	auto getResultType = MakeRecursive([&](auto getResultType, auto bll, auto al) {
+		return STATIC_IF(Size(bll) == 0_z, Unpack(delay(al), [&](auto ...a){
 			return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
-		})...));
-	})));
+		}), Unpack(Front(delay(bll)), [&](auto... b) {
+			auto tail = Tail(delay(bll));
+			return CommonType(delay(getResultType)(tail, Append(b, al))...);
+		}));
+	});
+	using R = decltype(DeclVal(RemoveRValueReference(getResultType(boundTypesListList, UnitList<>{}))));
 	struct NullImp {
 		static R value(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
 	};
@@ -273,11 +261,7 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 		}));
 	});
 	auto getImp = [&](auto ...a) {
-		//STATIC_LAMBDA instead of local class is a workaround for https://llvm.org/bugs/show_bug.cgi?id=22990
-		auto imp = STATIC_LAMBDA(V&&... v) -> R {
-			return F{}(UnsafeGetAs(ApplyCVReference(Type<V&&>{}, delay(decltype(a){})), static_cast<V&&>(v))...);
-		};
-		return Cast(Type<R(*)(V&&...)>{}, imp);
+		return Constant<typename InvokeMultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>>{};
 	};
 	auto getImps = MakeRecursive([&](auto getImps, auto bll, auto al) {
 		return STATIC_IF(Size(bll) == 0_z, Unpack(delay(al), getImp), Unpack(Front(delay(bll)), [&](auto... b) {
@@ -285,7 +269,7 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 			return MakeArray(getNullImps(tail), getImps(tail, Append(b, al))...);
 		}));
 	});
-	constexpr static auto imps = decltype(getImps(MakeList(BoundTypes(Decay(Type<V>{}))...), UnitList<>{}))::value;
+	constexpr static auto imps = decltype(getImps(boundTypesListList, UnitList<>{}))::value;
 	auto callImp = MakeRecursive([&](const auto& callImp, const auto& imps, size_t i1, auto ...i2) {
 		const auto& found = imps.value[i1];
 		return STATIC_IF(Count(i2...) == 0_z, delay(found)(static_cast<V&&>(v)...), delay(callImp)(found, i2...));
@@ -337,7 +321,7 @@ struct S9 { ~S9() { DTOR_TEST_IMPL } };
 struct S10 { ~S10() { DTOR_TEST_IMPL } };
 
 using Shape2 = Variant<Circle, Rectangle>;
-using Shape3 = Variant<Circle, Rectangle, /*S1, S2, S3, S4, S5, S6, S7, S8, S9, S10,*/ Triangle>;
+using Shape3 = Variant<Circle, Rectangle, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, Triangle>;
 
 inline bool Intersect(Circle, Rectangle) {
 	puts(__PRETTY_FUNCTION__);
