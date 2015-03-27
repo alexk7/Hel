@@ -249,8 +249,10 @@ constexpr static struct While_t {
 } While{};
 */
 
-//Defined outside of InvokeMultiMethod as a workaround for https://llvm.org/bugs/show_bug.cgi?id=22990
 template <class F, class R, class ...V> struct InvokeMultiMethodImp {
+	struct WithNull {
+		static R value(V...) { throw std::invalid_argument("Null Variant passed to function."); }
+	};
 	template <class ...A> struct WithArgs {
 		static R value(V ...v) {
 			return F{}(UnsafeGetAs(ApplyCVReference(Type<V>{}, A{}), static_cast<V>(v))...);
@@ -269,17 +271,15 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 		}));
 	});
 	using R = decltype(DeclVal(RemoveRValueReference(getResultType(boundTypesListList, UnitList<>{}))));
-	struct NullImp {
-		static R value(V&&...) { throw std::invalid_argument("Null Variant passed to function."); }
-	};
+	using NullImp = typename InvokeMultiMethodImp<F, R, V&&...>::WithNull;
 	auto getNullImps = MakeRecursive([&](auto getNullImps, auto bll) {
-		return STATIC_IF(Size(bll) == 0_z, Constant<NullImp>{}, Unpack(Front(delay(bll)), [&](auto... b) {
+		return STATIC_IF(Size(bll) == 0_z, GetConstant(NullImp{}), Unpack(Front(delay(bll)), [&](auto... b) {
 			auto nullImps = getNullImps(Tail(delay(bll)));
 			return MakeArray(nullImps, ((void)b, nullImps)...);
 		}));
 	});
 	auto getImp = [&](auto ...a) {
-		return Constant<typename InvokeMultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>>{};
+		return GetConstant(typename InvokeMultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>{});
 	};
 	auto getImps = MakeRecursive([&](auto getImps, auto bll, auto al) {
 		return STATIC_IF(Size(bll) == 0_z, Unpack(delay(al), getImp), Unpack(Front(delay(bll)), [&](auto... b) {
@@ -471,7 +471,7 @@ int main()
 	}
 #endif
 
-#if 1
+#if 0
 	{
 		Shape3 v, v2, v3;
 		v = Circle{};
