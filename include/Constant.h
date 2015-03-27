@@ -10,6 +10,8 @@ template <class V> struct Constant : Unit<Constant<V>> {
 	constexpr operator type() const { return value; }
 };
 template <class T, T t> using TypedConstant = Constant<NonTypeTemplateParameter<T, t>>;
+template <class R> constexpr static TypedConstant<decltype(R::value), R::value> GetConstant(R, R) { return {}; }
+template <class R> constexpr static Constant<R> GetConstant(R, ...) { return {}; }
 template <bool b> using BoolConstant = TypedConstant<bool, b>;
 template <class T> constexpr auto operator!(Constant<T>) { return BoolConstant<!T::value>{}; }
 template <class A, class B> constexpr auto operator==(Constant<A>, Constant<B>) {

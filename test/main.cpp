@@ -458,7 +458,7 @@ int main()
 {
 	cout << TypeName(Type<decltype(test)>{}) << endl;
 
-#if 0
+#if 1
 	{
 		Shape2 v, v2, v3;
 		v = Circle{};
@@ -471,7 +471,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	{
 		Shape3 v, v2, v3;
 		v = Circle{};
@@ -482,7 +482,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	Circle c;
 	Rectangle r;
 
