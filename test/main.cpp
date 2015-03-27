@@ -40,14 +40,14 @@ template <class T> constexpr auto RemoveRValueReference(Type<T&&>) { return Type
 template <class T> constexpr auto RemoveRValueReference(Type<T>) { return Type<T>{}; }
 
 constexpr static struct If_t : ConstantFunction<If_t> {
-	template <class T, class U> constexpr decltype(auto) operator()(BoolConstant<true>, T&& t, U&&) const {
+	template <class T, class U> constexpr static decltype(auto) invoke(BoolConstant<true>, T&& t, U&&) {
 		return static_cast<T&&>(t);
 	}
-	template <class T, class U> constexpr decltype(auto) operator()(BoolConstant<false>, T&&, U&& u) const {
+	template <class T, class U> constexpr static decltype(auto) invoke(BoolConstant<false>, T&&, U&& u) {
 		return static_cast<U&&>(u);
 	}
-	template <class C, class T, class U> constexpr auto operator()(Constant<C>, T&& t, U&& u) const {
-		return (*this)(BoolConstant<static_cast<bool>(C::value)>{}, static_cast<T&&>(t), static_cast<U&&>(u));
+	template <class C, class T, class U> constexpr static auto invoke(Constant<C>, T&& t, U&& u) {
+		return invoke(BoolConstant<static_cast<bool>(C::value)>{}, static_cast<T&&>(t), static_cast<U&&>(u));
 	}
 } If{};
 
@@ -65,8 +65,7 @@ template <class ...T> constexpr auto MakeList(Unit<T>...) { return UnitList<T...
 template <class ...T, class F> constexpr decltype(auto) Unpack(UnitList<T...>, F f) { return f(T{}...); }
 
 
-constexpr static struct Identity_t : ConstantFunction<Identity_t> {
-	using ConstantFunction::operator();
+constexpr static struct Identity_t {
 	template <class T> constexpr T operator()(T&& t) const { return static_cast<T&&>(t); }
 } Identity{};
 
@@ -74,6 +73,39 @@ constexpr static struct Identity_t : ConstantFunction<Identity_t> {
 	If(Cond, [&](auto delay) { return Then; }, [&](auto delay) { return Else; })(Identity)
 
 template <class ...T> constexpr auto Count(const T&...) { return SizeConstant<sizeof...(T)>{}; }
+
+template <class ...T, class ...U> constexpr auto Concatenate(UnitList<T...>, UnitList<U...>) {
+	return UnitList<T..., U...>{};
+}
+
+template <class F> class Recursive {
+	F f_;
+public:
+	Recursive(const F& f) : f_(f) {}
+	Recursive(F&& f) : f_(static_cast<F&&>(f)) {}
+	template <class ...A> constexpr auto operator()(A&& ...a) const { return f_(*this, static_cast<A&&>(a)...); }
+};
+
+template <class F> constexpr auto MakeRecursive(F&& f) { return Recursive<std::decay_t<F>>{static_cast<F&&>(f)}; }
+
+constexpr static struct Quotient_t : ConstantFunction<Quotient_t> {
+	template <class T, class U> constexpr static auto invoke(const T& t, const U& u) { return t / u; }
+} Quotient{};
+template <class A, class B> constexpr auto operator/(Constant<A> a, Constant<B> b) { return Quotient(a, b); }
+constexpr static struct Difference_t : ConstantFunction<Difference_t> {
+	template <class T, class U> constexpr static auto invoke(const T& t, const U& u) { return t - u; }
+} Difference{};
+template <class A, class B> constexpr auto operator-(Constant<A> a, Constant<B> b) { return Difference(a, b); }
+
+template <class N> auto MakeIndexList(Constant<N> n) {
+	return STATIC_IF(n == 0_z, MakeList(), STATIC_IF(n == 1_z, MakeList(0_z), Unpack(MakeIndexList(delay(n) / 2_z), [&](auto ...a) {
+		return Unpack(MakeIndexList(delay(n) - n / 2_z), [&](auto ...b) {
+			return MakeList(a..., (Count(a...) + b)...);
+		});
+	})));
+}
+
+static auto test = MakeIndexList(9_z);
 
 template <class T> constexpr auto CommonType(Type<T> t) { return t; }
 template <class T, class U, class ...V> constexpr auto CommonType(Type<T> t, Type<U> u, Type<V> ...v) {
@@ -107,10 +139,6 @@ template <class T, class U, class ...V> constexpr auto FindType(T, UnitList<U, V
 	return FindType(T{}, UnitList<V...>{}) + 1_z;
 }
 
-template <class ...T, class ...U> constexpr auto Concatenate(UnitList<T...>, UnitList<U...>) {
-	return UnitList<T..., U...>{};
-}
-
 template <class T, class ...U> constexpr auto Append(Unit<T>, UnitList<U...>) { return UnitList<U..., T>{}; }
 template <class T, class ...U> constexpr auto Prepend(Unit<T>, UnitList<U...>) { return UnitList<T, U...>{}; }
 
@@ -128,16 +156,6 @@ template <class T, class U, class ...W, class ...L> constexpr auto CartesianProd
 	return Concatenate(CartesianProduct(UnitList<T>{}, L{}...),
 					   CartesianProduct(UnitList<U, W...>{}, L{}...));
 }
-
-template <class F> class Recursive {
-	F f_;
-public:
-	Recursive(const F& f) : f_(f) {}
-	Recursive(F&& f) : f_(static_cast<F&&>(f)) {}
-	template <class ...A> constexpr auto operator()(A&& ...a) const { return f_(*this, static_cast<A&&>(a)...); }
-};
-
-template <class F> constexpr auto MakeRecursive(F&& f) { return Recursive<std::decay_t<F>>{static_cast<F&&>(f)}; }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -438,7 +456,9 @@ inline void Test3(Circle, Rectangle, Triangle) {
 
 int main()
 {
-#if 1
+	cout << TypeName(Type<decltype(test)>{}) << endl;
+
+#if 0
 	{
 		Shape2 v, v2, v3;
 		v = Circle{};
@@ -451,7 +471,7 @@ int main()
 	}
 #endif
 
-#if 1
+#if 0
 	{
 		Shape3 v, v2, v3;
 		v = Circle{};
@@ -462,7 +482,7 @@ int main()
 	}
 #endif
 
-#if 1
+#if 0
 	Circle c;
 	Rectangle r;
 

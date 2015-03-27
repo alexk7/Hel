@@ -1,12 +1,16 @@
 #pragma once
 #include "Constant.h"
-template <class D>
-struct ConstantFunction {
-	template <class ...T>
-	struct Result {
-		constexpr static auto value = D{}(T::value...);
+template <class F> struct ConstantFunction {
+	template <class ...T> struct Result {
+		constexpr static auto value = F::invoke(T::value...);
 	};
+	template <class R> constexpr static auto GetConstant(R) { return TypedConstant<decltype(R::value), R::value>{}; }
+	template <class R> constexpr static auto GetConstant(...) { return Constant<R>{}; }
 	template <class T, class ...U> constexpr auto operator()(Constant<T>, Constant<U>...) const {
-		return Constant<Result<T, U...>>{};
+		using R = Result<T, U...>;
+		return GetConstant<R>(R{});
+	}
+	template <class T, class ...U> constexpr auto operator()(T t, U ...u) const {
+		return F::invoke(t, u...);
 	}
 };
