@@ -64,6 +64,13 @@ template <class ...T> constexpr auto Size(UnitList<T...>) { return SizeConstant<
 template <class ...T> constexpr auto MakeList(Unit<T>...) { return UnitList<T...>{}; }
 template <class ...T, class F> constexpr decltype(auto) Unpack(UnitList<T...>, F f) { return f(T{}...); }
 
+/*
+constexpr static struct Unpack_t {
+	template <class... T> constexpr decltype(auto) operator()(UnitList<T...>) const {
+		return MakeContinuation([&](auto&& f) { return static_cast<decltype(f)>(f)(T{}...); });
+	}
+} Unpack{};
+*/
 
 constexpr static struct Identity_t {
 	template <class T> constexpr T operator()(T&& t) const { return static_cast<T&&>(t); }
@@ -275,9 +282,10 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 		return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
 	};
 	auto getCommonResultType = MakeRecursive([&](auto getCommonResultType, auto bll, auto ...a) {
-		return STATIC_IF(Size(bll) == 0_z, delay(getResultType)(a...), Unpack(Front(delay(bll)), [&](auto... b) {
-			auto tail = Tail(delay(bll));
-			return CommonType(delay(getCommonResultType)(tail, a..., b)...);
+		return STATIC_IF(Size(bll) == 0_z, delay(getResultType)(a...), Unpack(delay(bll), [&](auto bl0, auto ...bl1) {
+			return Unpack(bl0, [&](auto... b) {
+				return CommonType(delay(getCommonResultType)(MakeList(bl1...), a..., b)...);
+			});
 		}));
 	});
 	using R = decltype(DeclVal(RemoveRValueReference(getCommonResultType(boundTypesListList))));
@@ -350,6 +358,7 @@ struct S10 { ~S10() { DTOR_TEST_IMPL } };
 
 using Shape2 = Variant<Circle, Rectangle>;
 using Shape3 = Variant<Circle, Rectangle, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, Triangle>;
+using Shape3b = Variant<Circle, Rectangle, Triangle>;
 
 inline bool Intersect(Circle, Rectangle) {
 	puts(__PRETTY_FUNCTION__);
@@ -481,9 +490,20 @@ int main()
 	}
 #endif
 
-#if 1
+#if 0
 	{
 		Shape3 v, v2, v3;
+		v = Circle{};
+		v2 = Rectangle{};
+		v3 = Triangle{};
+		Test3(v, v, v);
+		Test3(v, v2, v3);
+	}
+#endif
+
+#if 1
+	{
+		Shape3b v, v2, v3;
 		v = Circle{};
 		v2 = Rectangle{};
 		v3 = Triangle{};
