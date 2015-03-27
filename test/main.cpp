@@ -105,7 +105,15 @@ template <class N> auto MakeIndexList(Constant<N> n) {
 	})));
 }
 
-static auto test = MakeIndexList(9_z);
+/*
+template <class ...T, class S> constexpr auto At(UnitList<T...> l, S s) const {
+	Unpack(MakeIndexList(Size(l)), [&](auto ...i) {
+		return Unpack(l, [&](auto ...t) {
+
+		}
+	});
+}
+*/
 
 template <class T> constexpr auto CommonType(Type<T> t) { return t; }
 template <class T, class U, class ...V> constexpr auto CommonType(Type<T> t, Type<U> u, Type<V> ...v) {
@@ -249,10 +257,11 @@ constexpr static struct While_t {
 } While{};
 */
 
-template <class F, class R, class ...V> struct InvokeMultiMethodImp {
-	struct WithNull {
-		static R value(V...) { throw std::invalid_argument("Null Variant passed to function."); }
-	};
+template <class R, class ...V> struct MultiMethodNullImp {
+	static R value(V...) { throw std::invalid_argument("Null Variant passed to function."); }
+};
+
+template <class F, class R, class ...V> struct MultiMethodImp {
 	template <class ...A> struct WithArgs {
 		static R value(V ...v) {
 			return F{}(UnsafeGetAs(ApplyCVReference(Type<V>{}, A{}), static_cast<V>(v))...);
@@ -262,16 +271,17 @@ template <class F, class R, class ...V> struct InvokeMultiMethodImp {
 
 template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 	auto boundTypesListList = MakeList(BoundTypes(Decay(Type<V>{}))...);
-	auto getResultType = MakeRecursive([&](auto getResultType, auto bll, auto al) {
-		return STATIC_IF(Size(bll) == 0_z, Unpack(delay(al), [&](auto ...a){
-			return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
-		}), Unpack(Front(delay(bll)), [&](auto... b) {
+	auto getResultType = [&](auto ...a) {
+		return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
+	};
+	auto getCommonResultType = MakeRecursive([&](auto getCommonResultType, auto bll, auto ...a) {
+		return STATIC_IF(Size(bll) == 0_z, delay(getResultType)(a...), Unpack(Front(delay(bll)), [&](auto... b) {
 			auto tail = Tail(delay(bll));
-			return CommonType(delay(getResultType)(tail, Append(b, al))...);
+			return CommonType(delay(getCommonResultType)(tail, a..., b)...);
 		}));
 	});
-	using R = decltype(DeclVal(RemoveRValueReference(getResultType(boundTypesListList, UnitList<>{}))));
-	using NullImp = typename InvokeMultiMethodImp<F, R, V&&...>::WithNull;
+	using R = decltype(DeclVal(RemoveRValueReference(getCommonResultType(boundTypesListList))));
+	using NullImp = MultiMethodNullImp<R, V&&...>;
 	auto getNullImps = MakeRecursive([&](auto getNullImps, auto bll) {
 		return STATIC_IF(Size(bll) == 0_z, GetConstant(NullImp{}), Unpack(Front(delay(bll)), [&](auto... b) {
 			auto nullImps = getNullImps(Tail(delay(bll)));
@@ -279,15 +289,15 @@ template <class F, class ...V> static auto InvokeMultiMethod(V&& ...v) {
 		}));
 	});
 	auto getImp = [&](auto ...a) {
-		return GetConstant(typename InvokeMultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>{});
+		return GetConstant(typename MultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>{});
 	};
-	auto getImps = MakeRecursive([&](auto getImps, auto bll, auto al) {
-		return STATIC_IF(Size(bll) == 0_z, Unpack(delay(al), getImp), Unpack(Front(delay(bll)), [&](auto... b) {
+	auto getImps = MakeRecursive([&](auto getImps, auto bll, auto ...a) {
+		return STATIC_IF(Size(bll) == 0_z, delay(getImp)(a...), Unpack(Front(delay(bll)), [&](auto... b) {
 			auto tail = Tail(delay(bll));
-			return MakeArray(getNullImps(tail), getImps(tail, Append(b, al))...);
+			return MakeArray(getNullImps(tail), getImps(tail, a..., b)...);
 		}));
 	});
-	constexpr static auto imps = decltype(getImps(boundTypesListList, UnitList<>{}))::value;
+	constexpr static auto imps = decltype(getImps(boundTypesListList))::value;
 	auto callImp = MakeRecursive([&](const auto& callImp, const auto& imps, size_t i1, auto ...i2) {
 		const auto& found = imps.value[i1];
 		return STATIC_IF(Count(i2...) == 0_z, delay(found)(static_cast<V&&>(v)...), delay(callImp)(found, i2...));
@@ -456,7 +466,7 @@ inline void Test3(Circle, Rectangle, Triangle) {
 
 int main()
 {
-	cout << TypeName(Type<decltype(test)>{}) << endl;
+	//cout << TypeName(Type<decltype(test)>{}) << endl;
 
 #if 1
 	{
@@ -471,7 +481,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	{
 		Shape3 v, v2, v3;
 		v = Circle{};

@@ -14,12 +14,12 @@
 using namespace std;
 
 int main(int argc, const char * argv[]) {
-	auto filenames = With(MakeUniquePtr(popen("ls *.h", "r"), pclose), [](auto pFile) {
+	auto filenames = With(MakeUniquePtr(popen("ls *.h", "r"), pclose)) | [](auto pFile) {
 		vector<string> v;
 		while (auto line = GetLine(pFile.get()))
 			v.emplace_back(line);
 		return v;
-	});
+	};
 	unordered_set<string> symbols;
 	for (const auto& filename : filenames)
 		symbols.insert(filename.substr(0, filename.rfind('.')));
