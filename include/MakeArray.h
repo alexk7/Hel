@@ -1,5 +1,6 @@
 #pragma once
 #include "Array.h"
+#include "ConstantFunction.h"
 #include <type_traits>
 constexpr static struct MakeArray_t : ConstantFunction<MakeArray_t> {
 	template <class T, class... U> constexpr static auto invoke(T&& t, U&&... u) {

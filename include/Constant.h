@@ -1,5 +1,7 @@
 #pragma once
+#include "BoolConstant.h"
 #include "NonTypeTemplateParameter.h"
+#include "TypedConstant.h"
 #include "Unit.h"
 #include <type_traits>
 template <class V> struct Constant : Unit<Constant<V>> {
