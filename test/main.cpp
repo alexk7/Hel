@@ -61,6 +61,8 @@ template <class T, class U> constexpr auto operator+(Constant<T> a, Constant<U> 
 	return Sum(a, b);
 }
 
+constexpr auto Empty(UnitList<>) { return True; }
+template <class ...T> constexpr auto Empty(UnitList<T...>) { return False; }
 template <class ...T> constexpr auto Size(UnitList<T...>) { return SizeConstant<sizeof...(T)>{}; }
 template <class ...T> constexpr auto MakeList(Unit<T>...) { return UnitList<T...>{}; }
 template <class F, class... T> constexpr auto operator|(UnitList<T...>, F&& f) { return static_cast<F&&>(f)(T{}...); }
@@ -265,37 +267,40 @@ template <class F, class R, class ...V> struct MultiMethodImp {
 
 template <class F, class... V> static auto InvokeMultiMethod(V&&... v) {
 	auto boundTypeListList = MakeList(BoundTypes(Decay(Type<V>{}))...);
-	auto getCommonResultType = MakeRecursive([&](auto getCommonResultType, auto bll, auto... a) {
-		return STATIC_IF(Size(bll) == 0_z, With(a...) | [&](auto... a) {
+	auto getCommonResultType = MakeRecursive([&](auto getCommonResultType, auto bll, auto al) {
+		return STATIC_IF(Empty(bll), al | [&](auto... a) {
 			return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
 		}, bll | [&](auto bl0, auto... bl1) {
 			return bl0 | [&](auto... b) {
-				return CommonType(delay(getCommonResultType)(MakeList(bl1...), a..., b)...);
+				return al | [&](auto... a) {
+					return CommonType(getCommonResultType(MakeList(bl1...), MakeList(a..., b))...);
+				};
 			};
 		});
 	});
-	using R = decltype(DeclVal(RemoveRValueReference(getCommonResultType(boundTypeListList))));
+	using R = decltype(DeclVal(RemoveRValueReference(getCommonResultType(boundTypeListList, MakeList()))));
 	using NullImp = MultiMethodNullImp<R, V&&...>;
-	auto getNullImps = MakeRecursive([&](auto getNullImps, auto... bl) {
-		return STATIC_IF(Count(bl...) == 0_z, GetConstant(NullImp{}), With(bl...) | [&](auto bl0, auto... bl1) {
+	auto getNullImps = MakeRecursive([&](auto getNullImps, auto bll) {
+		return STATIC_IF(Empty(bll), GetConstant(NullImp{}), bll | [&](auto bl0, auto... bl1) {
+			auto nullImps = getNullImps(MakeList(bl1...));
 			return bl0 | [&](auto... b) {
-				auto nullImps = getNullImps(bl1...);
 				return MakeArray(nullImps, ((void)b, nullImps)...);
 			};
 		});
 	});
-	auto getImp = [&](auto... a) {
-		return GetConstant(typename MultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>{});
-	};
-	auto getImps = MakeRecursive([&](auto getImps, auto bll, auto... a) {
-		return STATIC_IF(Size(bll) == 0_z, delay(getImp)(a...), bll | [&](auto bl0, auto... bl1) {
+	auto getImps = MakeRecursive([&](auto getImps, auto bll, auto al) {
+		return STATIC_IF(Size(bll) == 0_z, al | [&](auto... a) {
+			return GetConstant(typename MultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>{});
+		}, bll | [&](auto bl0, auto... bl1) {
+			auto tail = MakeList(bl1...);
 			return bl0 | [&](auto... b) {
-				auto tail = MakeList(bl1...);
-				return MakeArray(getNullImps(bl1...), getImps(tail, a..., b)...);
+				return al | [&](auto... a) {
+					return MakeArray(getNullImps(tail), getImps(tail, MakeList(a..., b))...);
+				};
 			};
 		});
 	});
-	constexpr static auto imps = decltype(getImps(boundTypeListList))::value;
+	constexpr static auto imps = decltype(getImps(boundTypeListList, MakeList()))::value;
 	auto callImp = MakeRecursive([&](const auto& callImp, const auto& imps, size_t i1, auto... i2) {
 		const auto& found = imps.value[i1];
 		return STATIC_IF(Count(i2...) == 0_z, delay(found)(static_cast<V&&>(v)...), delay(callImp)(found, i2...));
