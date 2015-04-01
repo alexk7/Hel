@@ -1,6 +1,5 @@
 #pragma once
 #include "Constant.h"
-#include "TypedConstant.h"
 template <class F> struct ConstantFunction {
 	template <class ...T> struct Result {
 		constexpr static auto value = F::invoke(T::value...);

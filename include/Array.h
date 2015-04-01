@@ -1,6 +1,6 @@
 #pragma once
 #include <stddef.h>
-template <class T, size_t size> struct Array
+template <class T, size_t s> struct Array
 {
-    T value[size];
+    T value[s];
 };
