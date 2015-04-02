@@ -297,33 +297,32 @@ template <class XL, class N> auto GetNthElement(XL xl, N n) {
 	};
 };
 
-template <class T, size_t s> constexpr auto Size(Array<T, s>) { return SizeConstant<s>{}; }
+//template <class T, size_t s> constexpr auto Size(Array<T, s>) { return SizeConstant<s>{}; }
 
 static class Concatenate_t {
-	template <class... S> constexpr static auto GetIndexMapArray(S...) {
-		constexpr size_t totalSize = Sum(S{}...);
-		Array<Array<size_t, 2>, totalSize> array = {{ {{0}} }};
+	struct IJ {
+		size_t i;
+		size_t j;
+	};
+	template <class... S> constexpr static auto MakeIJArray(S...) {
+		Array<IJ, Sum(S{}...)> array{};
 		size_t sizes[] = { S{}... };
-		size_t n = 0;
-		for (size_t i = 0; i < sizeof...(S); ++i) {
-			for (size_t j = 0; j < sizes[i]; ++j) {
-				array.value[n].value[0] = i;
-				array.value[n].value[1] = j;
-				++n;
-			}
-		}
+		for (size_t n = 0, i = 0; i < sizeof...(S); ++i)
+			for (size_t j = 0; j < sizes[i]; ++j, ++n)
+				array.value[n] = {i, j};
 		return array;
 	}
-	template <class... S> static auto GetIndexMapList(S...) {
-		constexpr auto array = GetIndexMapArray(S{}...);
-		return MakeIndexList(Size(array)) | [&](auto... n) {
-			return MakeList(MakeList(SizeConstant<array.value[n].value[0]>{}, SizeConstant<array.value[n].value[1]>{})...);
+	template <class... S> static auto MakeIJList(S...) {
+		constexpr static auto array = MakeIJArray(S{}...);
+		return MakeIndexList(Sum(S{}...)) | [](auto... n) {
+			return MakeList(MakeList(SizeConstant<array.value[n].i>{},
+									 SizeConstant<array.value[n].j>{})...);
 		};
 	}
 public:
 	template <class... L> auto operator()(L... l) const {
 		auto ll = MakeList(l...);
-		return GetIndexMapList(Size(l)...) | [&](auto... ij) {
+		return MakeIJList(Size(l)...) | [&](auto... ij) {
 			return MakeList(ij | [&](auto i, auto j) {
 				return GetNthElement(GetNthElement(ll, i), j);
 			}...);
@@ -331,9 +330,11 @@ public:
 	}
 } Concatenate_2{};
 
+//*
 static auto test = Concatenate_2(MakeList(Type<int>{}, Type<void>{}),
 								 MakeList(Type<char>{}, Type<double>{}, Type<long long>{}),
 								 MakeList(Type<unsigned>{}));
+//*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -661,7 +662,7 @@ int main()
 {
 	cout << TypeName(Type<decltype(test)>{}) << endl;
 
-#if 1
+#if 0
 	{
 		Shape2 v, v2, v3;
 		v = Circle{};
@@ -685,7 +686,7 @@ int main()
 	}
 #endif
 
-#if 1
+#if 0
 	{
 		Shape3b v, v2, v3;
 		v = Circle{};
@@ -696,7 +697,7 @@ int main()
 	}
 #endif
 
-#if 1
+#if 0
 	Circle c;
 	Rectangle r;
 
