@@ -29,7 +29,7 @@ template <class T> constexpr auto Decay(Type<T>) { return Type<std::decay_t<T>>{
 template <class T> constexpr auto RemoveRValueReference(Type<T&&>) { return Type<T>{}; }
 template <class T> constexpr auto RemoveRValueReference(Type<T>) { return Type<T>{}; }
 
-constexpr static struct If_t : ConstantFunction<If_t> {
+struct If_t {
 	template <class T, class U> constexpr static decltype(auto) invoke(BoolConstant<true>, T&& t, U&&) {
 		return static_cast<T&&>(t);
 	}
@@ -39,7 +39,8 @@ constexpr static struct If_t : ConstantFunction<If_t> {
 	template <class C, class T, class U> constexpr static auto invoke(Constant<C>, T&& t, U&& u) {
 		return invoke(BoolConstant<static_cast<bool>(C::value)>{}, static_cast<T&&>(t), static_cast<U&&>(u));
 	}
-} If{};
+};
+constexpr static ConstantFunction<If_t> If{};
 
 template <class T, char c> constexpr auto Parse(Type<T>, UnitList<CharConstant<c>>) {
 	return TypedConstant<T, c - '0'>{};
@@ -81,13 +82,15 @@ public:
 
 template <class F> constexpr auto MakeRecursive(F&& f) { return Recursive<std::decay_t<F>>{static_cast<F&&>(f)}; }
 
-constexpr static struct Quotient_t : ConstantFunction<Quotient_t> {
+struct Quotient_t {
 	template <class T, class U> constexpr static auto invoke(const T& t, const U& u) { return t / u; }
-} Quotient{};
+};
+constexpr static ConstantFunction<Quotient_t> Quotient{};
 template <class A, class B> constexpr auto operator/(Constant<A> a, Constant<B> b) { return Quotient(a, b); }
-constexpr static struct Difference_t : ConstantFunction<Difference_t> {
+struct Difference_t {
 	template <class T, class U> constexpr static auto invoke(const T& t, const U& u) { return t - u; }
-} Difference{};
+};
+constexpr static ConstantFunction<Difference_t> Difference{};
 template <class A, class B> constexpr auto operator-(Constant<A> a, Constant<B> b) { return Difference(a, b); }
 
 template <class T> constexpr auto CommonType(Type<T> t) { return t; }
@@ -304,16 +307,19 @@ static class Concatenate_t {
 		size_t i;
 		size_t j;
 	};
-	template <class... S> constexpr static auto MakeIJArray(S...) {
-		Array<IJ, Sum(S{}...)> array{};
-		size_t sizes[] = { S{}... };
-		for (size_t n = 0, i = 0; i < sizeof...(S); ++i)
-			for (size_t j = 0; j < sizes[i]; ++j, ++n)
-				array.value[n] = {i, j};
-		return array;
-	}
+	template <class... S> struct IJArray {
+		constexpr static auto Value() {
+			Array<IJ, Sum(S{}...)> array{};
+			size_t sizes[] = { S{}... };
+			for (size_t n = 0, i = 0; i < sizeof...(S); ++i)
+				for (size_t j = 0; j < sizes[i]; ++j, ++n)
+					array.value[n] = {i, j};
+			return array;
+		}
+		constexpr static auto value = Value();
+	};
 	template <class... S> static auto MakeIJList(S...) {
-		constexpr static auto array = MakeIJArray(S{}...);
+		constexpr static auto array = IJArray<S...>::value;
 		return MakeIndexList(Sum(S{}...)) | [](auto... n) {
 			return MakeList(MakeList(SizeConstant<array.value[n].i>{},
 									 SizeConstant<array.value[n].j>{})...);
@@ -662,7 +668,7 @@ int main()
 {
 	cout << TypeName(Type<decltype(test)>{}) << endl;
 
-#if 0
+#if 1
 	{
 		Shape2 v, v2, v3;
 		v = Circle{};
@@ -675,7 +681,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	{
 		Shape3 v, v2, v3;
 		v = Circle{};
@@ -686,7 +692,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	{
 		Shape3b v, v2, v3;
 		v = Circle{};
@@ -697,7 +703,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	Circle c;
 	Rectangle r;
 

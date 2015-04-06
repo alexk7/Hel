@@ -9,7 +9,7 @@ template <class V> struct Constant : Unit<Constant<V>> {
 	constexpr static type value = V::value;
 	constexpr operator type() const { return value; }
 };
-template <class T, T t> using TypedConstant = Constant<NonTypeTemplateParameter<T, t>>;
+template <class T, T t> struct TypedConstant : Constant<NonTypeTemplateParameter<T, t>> {};
 constexpr static class GetConstant_t {
 	template <class V> static TypedConstant<std::remove_const_t<decltype(V::value)>, V::value> sfinae(int);
 	template <class V> static TypedConstant<const decltype(V::value)&, V::value> sfinae(long);
