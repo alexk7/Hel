@@ -6,6 +6,7 @@
 #include "False.h"
 #include "MakeArray.h"
 #include "MakeUniquePtr.h"
+#include "Multiply.h"
 #include "PPCAT.h"
 #include "SizeConstant.h"
 #include "Sum.h"
@@ -68,9 +69,11 @@ constexpr static struct Identity_t {
 
 #define IF(Cond, Then, Else) If(Cond, [&](auto) { return Then; }, [&](auto) { return Else; })(0)
 
+/*
 template <class ...T, class ...U> constexpr auto Concatenate(UnitList<T...>, UnitList<U...>) {
 	return UnitList<T..., U...>{};
 }
+*/
 
 template <class F> class Recursive {
 	F f_;
@@ -132,6 +135,7 @@ template <class T, class ...L> constexpr auto PrependToEach(Unit<T>, UnitList<L.
 	return MakeList(Prepend(T{}, L{})...);
 }
 
+/*
 template <class ...T> constexpr auto CartesianProduct(UnitList<T...>) {
 	return UnitList<UnitList<T...>>{};
 }
@@ -142,6 +146,7 @@ template <class T, class U, class ...W, class ...L> constexpr auto CartesianProd
 	return Concatenate(CartesianProduct(UnitList<T>{}, L{}...),
 					   CartesianProduct(UnitList<U, W...>{}, L{}...));
 }
+*/
 
 /*
 struct Iota_t {
@@ -222,22 +227,6 @@ static auto Concatenate_2 = MakeRecursive([](auto concatenate, auto xll) {
 	};
 });
 */
-/*
-static auto CartesianProduct_2 = MakeRecursive([](auto cartesianProduct, auto il1, auto... il2) {
-	auto iter = [&](auto i1) {
-		return cartesianProduct(il2...) | [&](auto... rl) {
-			return MakeList(rl | [&](auto... r) {
-				return MakeList(i1, r...);
-			}...);
-		};
-	};
-	return IF(NoArgs(il2...), MakeList(il1), With((il1 | iter)...) | [&](auto... rll) {
-		return rll | [&](auto... rl) {
-			return MakeList(rl...);
-		};
-	});
-});
-*/
 
 /*
 static auto Identity = [](auto x) {
@@ -292,7 +281,10 @@ static auto MakeUnitArray = [](auto... t) {
 
 template <class To, class From> auto StaticCast(Type<To>, From from) { return static_cast<To>(from); }
 
+#define UNIT_ASSERT(x) static_assert(decltype(x){}, #x)
+
 template <class XL, class N> auto GetNthElement(XL xl, N n) {
+	UNIT_ASSERT(n < Size(xl));
 	return xl | [&](auto... x) {
 		auto types = MakeUnitArray(Type<decltype(x)*>{}...);
 		void* values[] = { &x... };
@@ -302,42 +294,80 @@ template <class XL, class N> auto GetNthElement(XL xl, N n) {
 
 //template <class T, size_t s> constexpr auto Size(Array<T, s>) { return SizeConstant<s>{}; }
 
-static class Concatenate_t {
-	struct IJ {
-		size_t i;
-		size_t j;
-	};
-	template <class... S> struct IJArray {
-		constexpr static auto Value() {
-			Array<IJ, Sum(S{}...)> array{};
-			size_t sizes[] = { S{}... };
-			for (size_t n = 0, i = 0; i < sizeof...(S); ++i)
-				for (size_t j = 0; j < sizes[i]; ++j, ++n)
-					array.value[n] = {i, j};
-			return array;
-		}
-		constexpr static auto value = Value();
-	};
-	template <class... S> static auto MakeIJList(S...) {
-		constexpr static auto array = IJArray<S...>::value;
+class Concatenate_t {
+	template <class... S> constexpr static auto MakeIndexArrayArray() {
+		Array<Array<size_t, 2>, Sum(S{}...)> array{};
+		size_t sizes[] = { S{}... };
+		for (size_t n = 0, i = 0; i < sizeof...(S); ++i)
+			for (size_t j = 0; j < sizes[i]; ++j, ++n)
+				array[n] = {{ i, j }};
+		return array;
+	}
+	template <class... S> static auto MakeIndexListList(S...) {
+		constexpr static auto indexArrayArray = MakeIndexArrayArray<S...>();
 		return MakeIndexList(Sum(S{}...)) | [](auto... n) {
-			return MakeList(MakeList(SizeConstant<array.value[n].i>{},
-									 SizeConstant<array.value[n].j>{})...);
+			return MakeList(With(n) | [](auto n) {
+				constexpr auto indexArray = indexArrayArray[n];
+				constexpr auto i = SizeConstant<indexArray[0]>{};
+				constexpr auto j = SizeConstant<indexArray[1]>{};
+				return MakeList(i, j);
+			}...);
 		};
 	}
 public:
 	template <class... L> auto operator()(L... l) const {
 		auto ll = MakeList(l...);
-		return MakeIJList(Size(l)...) | [&](auto... ij) {
-			return MakeList(ij | [&](auto i, auto j) {
-				return GetNthElement(GetNthElement(ll, i), j);
+		return MakeIndexListList(Size(l)...) | [&](auto... il) {
+			return MakeList(il | [&](auto i, auto j) {
+				return ll[i][j];
 			}...);
 		};
 	}
-} Concatenate_2{};
+};
+constexpr static Concatenate_t Concatenate_2{};
 
 //*
-static auto test = Concatenate_2(MakeList(Type<int>{}, Type<void>{}),
+class CartesianProduct_t {
+	template <class... S> constexpr static auto MakeIndexArrayArray() {
+		//*
+		constexpr size_t P = Multiply(S{}...);
+		constexpr size_t N = sizeof...(S);
+		Array<Array<size_t, N>, P> result{};
+		size_t sizes[] = { S{}... };
+		for (size_t i = 0; i < P; ++i) {
+			size_t now = i;
+			for (size_t j = 0; j < N; ++j) {
+				result[i][j] = now % sizes[j];
+				now /= sizes[j];
+			}
+		}
+		return result;
+		//*/
+	}
+	template <class... S> static auto MakeIndexListList(S...) {
+		constexpr static auto indexArrayArray = MakeIndexArrayArray<S...>();
+		return MakeIndexList(Multiply(S{}...)) | [](auto... i) {
+			return MakeList(With(i) | [](auto i) {
+				return MakeIndexList(ArgCount(S{}...)) | [&](auto... j) {
+					return MakeList(SizeConstant<indexArrayArray[i][j]>{}...);
+				};
+			}...);
+		};
+	}
+public:
+	template <class... L> auto operator()(L... l) const {
+		return MakeIndexListList(Size(l)...) | [&l...](auto... il) {
+			return MakeList(il | [&l...](auto... i) {
+				return MakeList(l[i]...);
+			}...);
+		};
+	}
+};
+constexpr static CartesianProduct_t CartesianProduct{};
+//*/
+
+//*
+static auto test = CartesianProduct(MakeList(Type<int>{}, Type<void>{}),
 								 MakeList(Type<char>{}, Type<double>{}, Type<long long>{}),
 								 MakeList(Type<unsigned>{}));
 //*/
@@ -485,7 +515,7 @@ template <class F, class... V> static auto InvokeMultiMethod(V&&... v) {
 	constexpr static auto imps = decltype(getImps(boundTypeListList, MakeList()))::value;
 	//*
 	auto findImp = MakeRecursive([&](const auto& callImp, const auto& imps, size_t i1, auto... i2) {
-		const auto& found = imps.value[i1];
+		const auto& found = imps[i1];
 		return IF(ArgCount(i2...) == 0_z, found, With(found) | [&](auto& found) {
 			return callImp(found, i2...);
 		});
@@ -668,7 +698,7 @@ int main()
 {
 	cout << TypeName(Type<decltype(test)>{}) << endl;
 
-#if 1
+#if 0
 	{
 		Shape2 v, v2, v3;
 		v = Circle{};
@@ -681,7 +711,7 @@ int main()
 	}
 #endif
 
-#if 1
+#if 0
 	{
 		Shape3 v, v2, v3;
 		v = Circle{};
@@ -692,7 +722,7 @@ int main()
 	}
 #endif
 
-#if 1
+#if 0
 	{
 		Shape3b v, v2, v3;
 		v = Circle{};
@@ -703,7 +733,7 @@ int main()
 	}
 #endif
 
-#if 1
+#if 0
 	Circle c;
 	Rectangle r;
 

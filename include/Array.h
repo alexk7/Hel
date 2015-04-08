@@ -2,5 +2,7 @@
 #include <stddef.h>
 template <class T, size_t s> struct Array
 {
-    T value[s];
+    T values[s];
+	constexpr T& operator[](size_t n) { return values[n]; }
+	constexpr const T& operator[](size_t n) const { return values[n]; }
 };
