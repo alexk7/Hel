@@ -6,7 +6,7 @@ struct Or_t {
 	constexpr static auto invoke() { return False; }
 	template <class T, class ...U> constexpr static auto invoke(const T& t, const U&... u) {
 		bool b = static_cast<bool>(t);
-		Noop((b = b || u)...);
+		(void)(bool[]){(b = b || u)...};
 		return b;
 	}
 }

@@ -4,15 +4,15 @@ template <size_t p> struct SfinaePriority : SfinaePriority<p - 1> {};
 template <> struct SfinaePriority<0> {};
 template <class F> class ConstantFunction {
 	template <class... T> struct Result {
-		constexpr static auto value = F::invoke(T::value...);
+		constexpr static auto value = F::invoke(T::Unit::Value()...);
 	};
 	//*
 	template <class... T> constexpr static auto SfinaeHack(SfinaePriority<2>, T...)
-		-> TypedConstant<std::remove_const_t<decltype(F::invoke(T::value...))>, F::invoke(T::value...)> {
+		-> TypedConstant<std::remove_const_t<decltype(F::invoke(T::Unit::Value()...))>, F::invoke(T::Unit::Value()...)> {
 		return {};
 	}
 	template <class... T> constexpr static auto SfinaeHack(SfinaePriority<1>, T...)
-		-> TypedConstant<const decltype(F::invoke(T::value...))&, Result<T...>::value> {
+		-> TypedConstant<const decltype(F::invoke(T::Unit::Value()...))&, Result<T...>::value> {
 		return {};
 	}
 	template <class... T> constexpr static auto SfinaeHack(SfinaePriority<0>, T... t) {
