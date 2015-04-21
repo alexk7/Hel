@@ -155,20 +155,6 @@ struct FindArg_t {
 };
 constexpr static ConstantFunction<FindArg_t> FindArg{};
 
-/*
-class Unique_t {
-
-public:
-	template <class... X> auto operator()(X... x) const {
-		return MakeIndexList(ArgCount(x...)) | [&](auto... i) {
-			return MakeIndexList(i) | [&](auto... j) {
-				Find(x[i] == x[j], i
-			};
-		};
-	}
-};
-//*/
-
 static auto MakeIndexList = MakeRecursive([](auto MakeIndexList, auto n) {
 	return IF(n > 1_z, With(n) | [&](auto n) {
 		auto h = n / 2_z;
@@ -201,14 +187,48 @@ template <class To, class From> auto StaticCast(Type<To>, From from) { return st
 
 #define UNIT_ASSERT(x) static_assert(decltype(x){}, #x)
 
-template <class XL, class N> auto GetNthElement(XL xl, N n) {
-	UNIT_ASSERT(n < Size(xl));
+template <class N, class... X> auto GetNthArg(N n, X... x) {
+	UNIT_ASSERT(n < ArgCount(x...));
+	auto types = MakeUnitArray(Type<X*>{}...);
+	void* values[] = { &x... };
+	return *StaticCast(types[n], values[n]);
+};
+
+template <class N, class XL> auto GetNthElement(N n, XL xl) {
 	return xl | [&](auto... x) {
-		auto types = MakeUnitArray(Type<decltype(x)*>{}...);
-		void* values[] = { &x... };
-		return *StaticCast(types[n], values[n]);
+		return GetNthArg(n, x...);
 	};
 };
+
+/*
+class Unique_t {
+	template <class... X>
+	struct Data {
+		size_t indices[sizeof...(X)] = {
+			decltype(With(X{}) | [](auto x) {
+				return FindArg(x, X{}...);
+			})::value...
+		};
+		size_t count = 0;
+		constexpr Data() {
+			for (size_t i = 0; i < sizeof...(X); ++i) {
+				if (indices[i] == i)
+					indices[count++] = i;
+			}
+		}
+	};
+public:
+	template <class... X> auto operator()(Unit<X>...) const {
+		constexpr Data<X...> data{};
+		return MakeIndexList(SizeConstant<data.count>{}) | [&](auto... i) {
+			return MakeList(GetNthArg(SizeConstant<data.indices[i]>{}, X{}...)...);
+		};
+	}
+};
+constexpr static Unique_t Unique{};
+
+static auto test2 = Unique(Type<int>{}, Type<int>{}, Type<char>{}, Type<int>{}, Type<short>{}, Type<short>{});
+//*/
 
 //template <class T, size_t s> constexpr auto Size(Array<T, s>) { return SizeConstant<s>{}; }
 
@@ -724,7 +744,7 @@ inline void Test3(Circle, Rectangle, Triangle) {
 
 int main()
 {
-	cout << TypeName(Type<decltype(test)>{}) << endl;
+	//cout << TypeName(Type<decltype(test2)>{}) << endl;
 
 #if 1
 	{
