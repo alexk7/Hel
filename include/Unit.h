@@ -1,10 +1,5 @@
 #pragma once
-template <class T> struct Unit {
-	constexpr static T Value() { return {}; }
+#include "Constant.h"
+template <class D> struct Unit : Constant<D> {
+	constexpr static auto Value() { return D{}; }
 };
-template <class A, class B> constexpr auto operator==(Unit<A>, Unit<B>) { return A{} == B{}; }
-template <class A, class B> constexpr auto operator!=(Unit<A>, Unit<B>) { return !(A{} == B{}); }
-template <class A, class B> constexpr auto operator<(Unit<A>, Unit<B>) { return A{} < B{}; }
-template <class A, class B> constexpr auto operator>(Unit<A>, Unit<B>) { return B{} < A{}; }
-template <class A, class B> constexpr auto operator<=(Unit<A>, Unit<B>) { return !(B{} < A{}); }
-template <class A, class B> constexpr auto operator>=(Unit<A>, Unit<B>) { return !(A{} < B{}); }

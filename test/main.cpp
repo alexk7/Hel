@@ -1,8 +1,6 @@
-#include "And.h"
 #include "Array.h"
 #include "CharConstant.h"
 #include "Constant.h"
-#include "ConstantFunction.h"
 #include "False.h"
 #include "MakeArray.h"
 #include "MakeUniquePtr.h"
@@ -13,8 +11,7 @@
 #include "True.h"
 #include "Type.h"
 #include "TypeName.h"
-#include "Unit.h"
-#include "UnitList.h"
+#include "ConstantList.h"
 #include "With.h"
 #include <algorithm>
 #include <array>
@@ -39,28 +36,24 @@ struct If_t {
 		return static_cast<U&&>(u);
 	}
 	template <class C, class T, class U> constexpr static auto invoke(Constant<C>, T&& t, U&& u) {
-		return invoke(BoolConstant<static_cast<bool>(C::value)>{}, static_cast<T&&>(t), static_cast<U&&>(u));
+		return invoke(BoolConstant<static_cast<bool>(C::Value())>{}, static_cast<T&&>(t), static_cast<U&&>(u));
 	}
 };
 constexpr static ConstantFunction<If_t> If{};
 
-template <class T, char c> constexpr auto Parse(Type<T>, UnitList<CharConstant<c>>) {
-	return TypedConstant<T, c - '0'>{};
+template <class T, char c> constexpr auto Parse(Type<T>, ConstantList<CharConstant<c>>) {
+	return TConstant<T, c - '0'>{};
 }
-template <char... c> constexpr auto operator""_z() { return Parse(Type<size_t>{}, UnitList<CharConstant<c>...>{}); }
-
-template <class T, class U> constexpr auto operator+(Constant<T> a, Constant<U> b) {
-	return Sum(a, b);
-}
+template <char... c> constexpr auto operator""_z() { return Parse(Type<size_t>{}, ConstantList<CharConstant<c>...>{}); }
 
 template <class... T> constexpr auto ArgCount(const T&...) { return SizeConstant<sizeof...(T)>{}; }
 constexpr auto NoArgs() { return True; }
 constexpr auto NoArgs(...) { return False; }
-constexpr auto Empty(UnitList<>) { return True; }
-template <class... T> constexpr auto Empty(UnitList<T...>) { return False; }
-template <class... T> constexpr auto Size(UnitList<T...>) { return SizeConstant<sizeof...(T)>{}; }
-template <class... T> constexpr auto MakeList(Unit<T>...) { return UnitList<T...>{}; }
-template <class F, class... T> constexpr auto operator|(UnitList<T...>, F&& f) { return static_cast<F&&>(f)(T{}...); }
+constexpr auto Empty(ConstantList<>) { return True; }
+template <class... T> constexpr auto Empty(ConstantList<T...>) { return False; }
+template <class... T> constexpr auto Size(ConstantList<T...>) { return SizeConstant<sizeof...(T)>{}; }
+template <class... T> constexpr auto MakeList(Constant<T>...) { return ConstantList<T...>{}; }
+template <class F, class... T> constexpr auto operator|(ConstantList<T...>, F&& f) { return static_cast<F&&>(f)(T{}...); }
 
 /*
 constexpr static struct Identity_t {
@@ -71,8 +64,8 @@ constexpr static struct Identity_t {
 #define IF(Cond, Then, Else) If(Cond, [&](auto) { return Then; }, [&](auto) { return Else; })(0)
 
 /*
-template <class ...T, class ...U> constexpr auto Concatenate(UnitList<T...>, UnitList<U...>) {
-	return UnitList<T..., U...>{};
+template <class ...T, class ...U> constexpr auto Concatenate(ConstantList<T...>, ConstantList<U...>) {
+	return ConstantList<T..., U...>{};
 }
 */
 
@@ -85,17 +78,6 @@ public:
 };
 
 template <class F> constexpr auto MakeRecursive(F&& f) { return Recursive<std::decay_t<F>>{static_cast<F&&>(f)}; }
-
-struct Quotient_t {
-	template <class T, class U> constexpr static auto invoke(const T& t, const U& u) { return t / u; }
-};
-constexpr static ConstantFunction<Quotient_t> Quotient{};
-template <class A, class B> constexpr auto operator/(Constant<A> a, Constant<B> b) { return Quotient(a, b); }
-struct Difference_t {
-	template <class T, class U> constexpr static auto invoke(const T& t, const U& u) { return t - u; }
-};
-constexpr static ConstantFunction<Difference_t> Difference{};
-template <class A, class B> constexpr auto operator-(Constant<A> a, Constant<B> b) { return Difference(a, b); }
 
 //*
 template <class T> constexpr auto CommonType(Type<T> t) { return t; }
@@ -116,7 +98,7 @@ constexpr auto CommonType(Type<T> t, Type<U>... u) {
 }
 //*/
 
-template <class F, class ...A> constexpr auto ResultType(Type<F> f, UnitList<Type<A>...>) {
+template <class F, class ...A> constexpr auto ResultType(Type<F> f, ConstantList<Type<A>...>) {
 	return Type<decltype(DeclVal(f)(DeclVal(Type<A>{})...))>{};
 }
 
@@ -132,18 +114,6 @@ template <class T, class U> constexpr auto ApplyReference(Type<T&&>, Type<U>) { 
 template <class T, class U> constexpr auto ApplyCVReference(Type<T> t, Type<U> u) {
 	return ApplyReference(t, ApplyCV(Type<std::remove_reference_t<T>>{}, u));
 }
-
-/*
-template <class T> constexpr auto Find(Unit<T>, UnitList<>) {
-	return 0_z;
-}
-template <class T, class ...U> constexpr auto Find(Unit<T>, UnitList<T, U...>) {
-	return 0_z;
-}
-template <class T, class U, class ...V> constexpr auto Find(Unit<T> t, UnitList<U, V...>) {
-	return Find(t, UnitList<V...>{}) + 1_z;
-}
-//*/
 
 struct FindArg_t {
 	template <class T, class... X> constexpr static auto invoke(T t, X... x) {
@@ -169,17 +139,17 @@ static auto MakeIndexList = MakeRecursive([](auto MakeIndexList, auto n) {
 	}, IF(n == 1_z, MakeList(0_z), MakeList()));
 });
 
-template <class... KV> class UnitMap {
+template <class... KV> class ConstantMap {
 	struct KVHack : KV... {};
-	template <class K, class V> static V VHack(UnitList<K, V>); //undefined
+	template <class K, class V> static V VHack(ConstantList<K, V>); //undefined
 public:
 	template <class K> auto operator[](K) const { return decltype(VHack<K>(KVHack{})){}; }
 };
-template <class... K, class... V> auto MakeMap(UnitList<K, V>...) { return UnitMap<UnitList<K, V>...>{}; }
+template <class... K, class... V> auto MakeMap(ConstantList<K, V>...) { return ConstantMap<ConstantList<K, V>...>{}; }
 
-static auto MakeUnitArray = [](auto... t) {
-	return MakeIndexList(ArgCount(t...)) | [t...](auto... i) {
-		return MakeMap(MakeList(i, t)...);
+static auto MakeConstantArray = [](auto... c) {
+	return MakeIndexList(ArgCount(c...)) | [c...](auto... i) {
+		return MakeMap(MakeList(i, c)...);
 	};
 };
 
@@ -189,7 +159,7 @@ template <class To, class From> auto StaticCast(Type<To>, From from) { return st
 
 template <class N, class... X> auto GetNthArg(N n, X... x) {
 	UNIT_ASSERT(n < ArgCount(x...));
-	auto types = MakeUnitArray(Type<X*>{}...);
+	auto types = MakeConstantArray(Type<X*>{}...);
 	void* values[] = { &x... };
 	return *StaticCast(types[n], values[n]);
 };
@@ -218,8 +188,8 @@ class Unique_t {
 		}
 	};
 public:
-	template <class... X> auto operator()(Unit<X>...) const {
-		constexpr Data<X...> data{};
+	template <class... X, X... x> auto operator()(Constant<X, x>...) const {
+		constexpr Data<Constant<X, x>...> data{};
 		return MakeIndexList(SizeConstant<data.count>{}) | [&](auto... i) {
 			return MakeList(GetNthArg(SizeConstant<data.indices[i]>{}, X{}...)...);
 		};
@@ -304,9 +274,9 @@ constexpr static CartesianProduct_t CartesianProduct{};
 //*/
 
 //*
-static auto test = CartesianProduct(MakeList(Type<int>{}, Type<void>{}),
-								 MakeList(Type<char>{}, Type<double>{}, Type<long long>{}),
-								 MakeList(Type<unsigned>{}, Type<void*>{}));
+static auto test = CartesianProduct(MakeList(type<int>, type<void>),
+								 MakeList(type<char>, type<double>, type<long long>),
+								 MakeList(type<unsigned>, type<void*>));
 //*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -333,16 +303,15 @@ protected:
 
 template <class ...Types>
 class Variant : VariantNS::VariantBase {
-	constexpr static auto typeList_ = MakeList(Type<Types>{}...);
+	constexpr static auto typeList_ = MakeList(type<Types>...);
 	constexpr static auto typeCount_ = Size(typeList_);
-	//template <class T> constexpr static auto Tag(Type<T> t) { return Find(t, MakeList(Type<Types>{}...)) + 1_z; }
-	template <class T> constexpr static auto Tag(Type<T> t) { return FindArg(t, Type<Types>{}...) + 1_z; }
+	template <class T> constexpr static auto Tag(Type<T> t) { return FindArg(t, type<Types>...) + 1_z; }
 	template <class T> constexpr static auto ValidType(Type<T> t) { return Variant::Tag(t) <= typeCount_; }
 	template <class To, class From> static constexpr auto ValidGet(Type<To> to, Type<From> from) {
 		constexpr auto toval = Decay(Type<To>{});
 		constexpr auto fromval = Decay(Type<From>{});
 		static_assert(Type<Variant>{} == fromval, "Calling GetAs with wrong Variant type!");
-		return And(Variant::ValidType(toval), ApplyCVReference(from, toval) == to);
+		return Variant::ValidType(toval) && ApplyCVReference(from, toval) == to;
 	}
 public:
 	constexpr Variant() noexcept {}
@@ -371,10 +340,10 @@ public:
 	friend size_t BoundTypeIndex(const Variant& v) { return v.data_.tag; }
 };
 
-template <class ...T> constexpr auto BoundTypes(Type<Variant<T...>>) { return UnitList<Type<T>...>{}; }
+template <class ...T> constexpr auto BoundTypes(Type<Variant<T...>>) { return ConstantList<Type<T>...>{}; }
 
 template <class T> constexpr size_t BoundTypeIndex(const T&) { return 0; }
-template <class T> constexpr auto BoundTypes(Type<T>) { return UnitList<Type<T>>{}; }
+template <class T> constexpr auto BoundTypes(Type<T>) { return ConstantList<Type<T>>{}; }
 
 template <class T, class U> std::enable_if_t<Type<T>{} == Type<U&&>{}, T> UnsafeGetAs(Type<T>, U&& u) {
 	return static_cast<T>(u);
@@ -414,57 +383,10 @@ template <class F, class R, class ...V> struct MultiMethodImp {
 	};
 };
 
-/*
-template <class F, class... V> static auto InvokeMultiMethod(V&&... v) {
-	auto boundTypeListList = MakeList(BoundTypes(Decay(Type<V>{}))...);
-	auto getCommonResultType = MakeRecursive([&](auto getCommonResultType, auto bll, auto al) {
-		return IF(Empty(bll), al | [&](auto... a) {
-			return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
-		}, bll | [&](auto bl0, auto... bl1) {
-			return bl0 | [&](auto... b) {
-				return al | [&](auto... a) {
-					return CommonType(getCommonResultType(MakeList(bl1...), MakeList(a..., b))...);
-				};
-			};
-		});
-	});
-	using R = decltype(DeclVal(RemoveRValueReference(getCommonResultType(boundTypeListList, MakeList()))));
-	using NullImp = MultiMethodNullImp<R, V&&...>;
-	auto getNullImps = MakeRecursive([&](auto getNullImps, auto bll) {
-		return IF(Empty(bll), GetConstant(NullImp{}), bll | [&](auto bl0, auto... bl1) {
-			auto nullImps = getNullImps(MakeList(bl1...));
-			return bl0 | [&](auto... b) {
-				return MakeArray(nullImps, ((void)b, nullImps)...);
-			};
-		});
-	});
-	auto getImps = MakeRecursive([&](auto getImps, auto bll, auto al) {
-		return IF(Size(bll) == 0_z, al | [&](auto... a) {
-			return GetConstant(typename MultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>{});
-		}, bll | [&](auto bl0, auto... bl1) {
-			auto tail = MakeList(bl1...);
-			return bl0 | [&](auto... b) {
-				return al | [&](auto... a) {
-					return MakeArray(getNullImps(tail), getImps(tail, MakeList(a..., b))...);
-				};
-			};
-		});
-	});
-	constexpr static auto imps = decltype(getImps(boundTypeListList, MakeList()))::value;
-	auto findImp = MakeRecursive([&](const auto& callImp, const auto& imps, size_t i1, auto... i2) {
-		const auto& found = imps[i1];
-		return IF(ArgCount(i2...) == 0_z, found, With(found) | [&](auto& found) {
-			return callImp(found, i2...);
-		});
-	});
-	return findImp(imps, BoundTypeIndex(v)...)(static_cast<V&&>(v)...);
-}
-//*/
-
-/*
 struct InvokeMultiMethod_t {
 	template <class F, class... V> struct Imps {
 		static auto ConstantValue() {
+			//auto argTypeListList = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
 			auto boundTypeListList = MakeList(BoundTypes(Decay(Type<V>{}))...);
 			auto getCommonResultType = MakeRecursive([&](auto getCommonResultType, auto bll, auto al) {
 				return IF(Empty(bll), al | [&](auto... a) {
@@ -480,7 +402,7 @@ struct InvokeMultiMethod_t {
 			using R = decltype(DeclVal(RemoveRValueReference(getCommonResultType(boundTypeListList, MakeList()))));
 			using NullImp = MultiMethodNullImp<R, V&&...>;
 			auto getNullImps = MakeRecursive([&](auto getNullImps, auto bll) {
-				return IF(Empty(bll), GetConstant(NullImp{}), bll | [&](auto bl0, auto... bl1) {
+				return IF(Empty(bll), TCONSTANT(&NullImp::value){}, bll | [&](auto bl0, auto... bl1) {
 					auto nullImps = getNullImps(MakeList(bl1...));
 					return bl0 | [&](auto... b) {
 						return MakeArray(nullImps, ((void)b, nullImps)...);
@@ -489,7 +411,7 @@ struct InvokeMultiMethod_t {
 			});
 			auto getImps = MakeRecursive([&](auto getImps, auto bll, auto al) {
 				return IF(Size(bll) == 0_z, al | [&](auto... a) {
-					return GetConstant(typename MultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>{});
+					return TCONSTANT(&MultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>::value){};
 				}, bll | [&](auto bl0, auto... bl1) {
 					auto tail = MakeList(bl1...);
 					return bl0 | [&](auto... b) {
@@ -501,8 +423,9 @@ struct InvokeMultiMethod_t {
 			});
 			return getImps(boundTypeListList, MakeList());
 		}
-		using type = typename decltype(ConstantValue())::type;
-		constexpr static type value = decltype(ConstantValue())::value;
+		using ctype = decltype(ConstantValue());
+		using type = decltype(ctype::Value());
+		constexpr static type value = ctype::Value();
 	};
 	template <class F, class... V> constexpr auto operator()(F, V&&... v) const {
 		auto& imps = Imps<F, V...>::value;
@@ -518,69 +441,6 @@ struct InvokeMultiMethod_t {
 template <class F, class... V>
 constexpr typename InvokeMultiMethod_t::Imps<F, V...>::type InvokeMultiMethod_t::Imps<F, V...>::value;
 constexpr static InvokeMultiMethod_t InvokeMultiMethod{};
-//*/
-
-//*
-struct InvokeMultiMethod_t {
-	template <class F, class... V> struct Imps {
-		static auto ConstantValue() {
-			auto argTypeListList = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
-
-
-			auto boundTypeListList = MakeList(BoundTypes(Decay(Type<V>{}))...);
-			auto getCommonResultType = MakeRecursive([&](auto getCommonResultType, auto bll, auto al) {
-				return IF(Empty(bll), al | [&](auto... a) {
-					return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
-				}, bll | [&](auto bl0, auto... bl1) {
-					return bl0 | [&](auto... b) {
-						return al | [&](auto... a) {
-							return CommonType(getCommonResultType(MakeList(bl1...), MakeList(a..., b))...);
-						};
-					};
-				});
-			});
-			using R = decltype(DeclVal(RemoveRValueReference(getCommonResultType(boundTypeListList, MakeList()))));
-			using NullImp = MultiMethodNullImp<R, V&&...>;
-			auto getNullImps = MakeRecursive([&](auto getNullImps, auto bll) {
-				return IF(Empty(bll), GetConstant(NullImp{}), bll | [&](auto bl0, auto... bl1) {
-					auto nullImps = getNullImps(MakeList(bl1...));
-					return bl0 | [&](auto... b) {
-						return MakeArray(nullImps, ((void)b, nullImps)...);
-					};
-				});
-			});
-			auto getImps = MakeRecursive([&](auto getImps, auto bll, auto al) {
-				return IF(Size(bll) == 0_z, al | [&](auto... a) {
-					return GetConstant(typename MultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>{});
-				}, bll | [&](auto bl0, auto... bl1) {
-					auto tail = MakeList(bl1...);
-					return bl0 | [&](auto... b) {
-						return al | [&](auto... a) {
-							return MakeArray(getNullImps(tail), getImps(tail, MakeList(a..., b))...);
-						};
-					};
-				});
-			});
-			return getImps(boundTypeListList, MakeList());
-		}
-		using type = typename decltype(ConstantValue())::type;
-		constexpr static type value = decltype(ConstantValue())::value;
-	};
-	template <class F, class... V> constexpr auto operator()(F, V&&... v) const {
-		auto& imps = Imps<F, V...>::value;
-		auto findImp = MakeRecursive([&](const auto& callImp, const auto& imps, size_t i1, auto... i2) {
-			const auto& found = imps[i1];
-			return IF(ArgCount(i2...) == 0_z, found, With(found) | [&](auto& found) {
-				return callImp(found, i2...);
-			});
-		});
-		return findImp(imps, BoundTypeIndex(v)...)(static_cast<V&&>(v)...);
-	}
-};
-template <class F, class... V>
-constexpr typename InvokeMultiMethod_t::Imps<F, V...>::type InvokeMultiMethod_t::Imps<F, V...>::value;
-constexpr static InvokeMultiMethod_t InvokeMultiMethod{};
-//*/
 
 #if 1
 #define DEFINE_FUNCTION(fn)\
@@ -671,6 +531,46 @@ inline bool Intersect(const T&, const Triangle&) {
 	return false;
 }
 
+inline void Print(S1) {
+	puts(__PRETTY_FUNCTION__);
+}
+
+inline void Print(S2) {
+	puts(__PRETTY_FUNCTION__);
+}
+
+inline void Print(S3) {
+	puts(__PRETTY_FUNCTION__);
+}
+
+inline void Print(S4) {
+	puts(__PRETTY_FUNCTION__);
+}
+
+inline void Print(S5) {
+	puts(__PRETTY_FUNCTION__);
+}
+
+inline void Print(S6) {
+	puts(__PRETTY_FUNCTION__);
+}
+
+inline void Print(S7) {
+	puts(__PRETTY_FUNCTION__);
+}
+
+inline void Print(S8) {
+	puts(__PRETTY_FUNCTION__);
+}
+
+inline void Print(S9) {
+	puts(__PRETTY_FUNCTION__);
+}
+
+inline void Print(S10) {
+	puts(__PRETTY_FUNCTION__);
+}
+
 inline void Print(Circle) {
 	puts(__PRETTY_FUNCTION__);
 }
@@ -744,7 +644,15 @@ inline void Test3(Circle, Rectangle, Triangle) {
 
 int main()
 {
-	//cout << TypeName(Type<decltype(test2)>{}) << endl;
+	cout << Name(Type<decltype(test)>{}) << endl;
+
+#if 1
+	{
+		Shape3 s;
+		s = Circle{};
+		Print(s);
+	}
+#endif
 
 #if 1
 	{
@@ -759,7 +667,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	{
 		Shape3 v, v2, v3;
 		v = Circle{};

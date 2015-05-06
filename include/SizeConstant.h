@@ -1,3 +1,3 @@
 #pragma once
-#include "TypedConstant.h"
-template <size_t s> using SizeConstant = TypedConstant<size_t, s>;
+#include "TConstant.h"
+template <size_t s> using SizeConstant = TConstant<size_t, s>;

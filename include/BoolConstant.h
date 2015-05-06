@@ -1,3 +1,3 @@
 #pragma once
 #include "Constant.h"
-//BoolConstant is defined in Constant.h
+template <bool b> using BoolConstant = TConstant<bool, b>;

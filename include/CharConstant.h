@@ -1,3 +1,3 @@
 #pragma once
-#include "TypedConstant.h"
-template <char c> using CharConstant = TypedConstant<char, c>;
+#include "Constant.h"
+template <char c> using CharConstant = TConstant<char, c>;
