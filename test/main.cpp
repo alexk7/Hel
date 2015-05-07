@@ -98,8 +98,8 @@ constexpr auto CommonType(Type<T> t, Type<U>... u) {
 }
 //*/
 
-template <class F, class ...A> constexpr auto ResultType(Type<F> f, ConstantList<Type<A>...>) {
-	return Type<decltype(DeclVal(f)(DeclVal(Type<A>{})...))>{};
+template <class F, class ...A> constexpr auto ResultType(Type<F> f, Type<A>... a) {
+	return Type<decltype(DeclVal(f)(DeclVal(a)...))>{};
 }
 
 template <class T, class U> constexpr auto ApplyCV(Type<T>, Type<U>) { return Type<U>{}; }
@@ -383,14 +383,14 @@ template <class F, class R, class ...V> struct MultiMethodImp {
 	};
 };
 
+//*
 struct InvokeMultiMethod_t {
 	template <class F, class... V> struct Imps {
 		static auto ConstantValue() {
-			//auto argTypeListList = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
 			auto boundTypeListList = MakeList(BoundTypes(Decay(Type<V>{}))...);
 			auto getCommonResultType = MakeRecursive([&](auto getCommonResultType, auto bll, auto al) {
 				return IF(Empty(bll), al | [&](auto... a) {
-					return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
+					return ResultType(Type<F>{}, ApplyCVReference(Type<V&&>{}, a)...);
 				}, bll | [&](auto bl0, auto... bl1) {
 					return bl0 | [&](auto... b) {
 						return al | [&](auto... a) {
@@ -441,6 +441,75 @@ struct InvokeMultiMethod_t {
 template <class F, class... V>
 constexpr typename InvokeMultiMethod_t::Imps<F, V...>::type InvokeMultiMethod_t::Imps<F, V...>::value;
 constexpr static InvokeMultiMethod_t InvokeMultiMethod{};
+//*/
+
+/*
+struct InvokeMultiMethod_t {
+	template <class F, class... V> struct Imps {
+		static auto ConstantValue() {
+			auto argTypeListList = CartesianProduct(BoundTypes(Decay(Type<V>{}))...);
+			auto resultTypeList = argTypeListList | [&](auto... al) {
+				return al | [&](auto... a) {
+					return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
+				};
+				ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
+			};
+			auto getCommonResultType = MakeRecursive([&](auto getCommonResultType, auto bll, auto al) {
+				return IF(Empty(bll), al | [&](auto... a) {
+					return ResultType(Type<F>{}, MakeList(ApplyCVReference(Type<V&&>{}, a)...));
+				}, bll | [&](auto bl0, auto... bl1) {
+					return bl0 | [&](auto... b) {
+						return al | [&](auto... a) {
+							return CommonType(getCommonResultType(MakeList(bl1...), MakeList(a..., b))...);
+						};
+					};
+				});
+			});
+
+			auto boundTypeListList = MakeList(BoundTypes(Decay(Type<V>{}))...);
+			using R = decltype(DeclVal(RemoveRValueReference(getCommonResultType(boundTypeListList, MakeList()))));
+			using NullImp = MultiMethodNullImp<R, V&&...>;
+			auto getNullImps = MakeRecursive([&](auto getNullImps, auto bll) {
+				return IF(Empty(bll), VCONSTANT(&NullImp::value){}, bll | [&](auto bl0, auto... bl1) {
+					auto nullImps = getNullImps(MakeList(bl1...));
+					return bl0 | [&](auto... b) {
+						return MakeArray(nullImps, ((void)b, nullImps)...);
+					};
+				});
+			});
+			auto getImps = MakeRecursive([&](auto getImps, auto bll, auto al) {
+				return IF(Size(bll) == 0_z, al | [&](auto... a) {
+					return VCONSTANT(&MultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>::value){};
+				}, bll | [&](auto bl0, auto... bl1) {
+					auto tail = MakeList(bl1...);
+					return bl0 | [&](auto... b) {
+						return al | [&](auto... a) {
+							return MakeArray(getNullImps(tail), getImps(tail, MakeList(a..., b))...);
+						};
+					};
+				});
+			});
+			return getImps(boundTypeListList, MakeList());
+		}
+		using ctype = decltype(ConstantValue());
+		using type = decltype(ctype::Value());
+		constexpr static type value = ctype::Value();
+	};
+	template <class F, class... V> constexpr auto operator()(F, V&&... v) const {
+		auto& imps = Imps<F, V...>::value;
+		auto findImp = MakeRecursive([&](const auto& callImp, const auto& imps, size_t i1, auto... i2) {
+			const auto& found = imps[i1];
+			return IF(ArgCount(i2...) == 0_z, found, With(found) | [&](auto& found) {
+				return callImp(found, i2...);
+			});
+		});
+		return findImp(imps, BoundTypeIndex(v)...)(static_cast<V&&>(v)...);
+	}
+};
+template <class F, class... V>
+constexpr typename InvokeMultiMethod_t::Imps<F, V...>::type InvokeMultiMethod_t::Imps<F, V...>::value;
+constexpr static InvokeMultiMethod_t InvokeMultiMethod{};
+//*/
 
 #if 1
 #define DEFINE_FUNCTION(fn)\
@@ -644,9 +713,9 @@ inline void Test3(Circle, Rectangle, Triangle) {
 
 int main()
 {
-	cout << Name(Type<decltype(test2)>{}) << endl;
+	//cout << Name(Type<decltype(test2)>{}) << endl;
 
-#if 0
+#if 1
 	{
 		Shape3 s;
 		s = Circle{};
@@ -689,7 +758,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	Circle c;
 	Rectangle r;
 
