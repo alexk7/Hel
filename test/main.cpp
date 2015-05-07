@@ -29,17 +29,17 @@ template <class T> constexpr auto RemoveRValueReference(Type<T&&>) { return Type
 template <class T> constexpr auto RemoveRValueReference(Type<T>) { return Type<T>{}; }
 
 struct If_t {
-	template <class T, class U> constexpr static decltype(auto) invoke(BoolConstant<true>, T&& t, U&&) {
+	template <class T, class U> constexpr T&& operator()(BoolConstant<true>, T&& t, U&&) const {
 		return static_cast<T&&>(t);
 	}
-	template <class T, class U> constexpr static decltype(auto) invoke(BoolConstant<false>, T&&, U&& u) {
+	template <class T, class U> constexpr U&& operator()(BoolConstant<false>, T&&, U&& u) const {
 		return static_cast<U&&>(u);
 	}
-	template <class C, class T, class U> constexpr static auto invoke(Constant<C>, T&& t, U&& u) {
-		return invoke(BoolConstant<static_cast<bool>(C::Value())>{}, static_cast<T&&>(t), static_cast<U&&>(u));
+	template <class C, class T, class U> constexpr decltype(auto) operator()(Constant<C>, T&& t, U&& u) const {
+		return (*this)(BoolConstant<static_cast<bool>(C::Value())>{}, static_cast<T&&>(t), static_cast<U&&>(u));
 	}
 };
-constexpr static ConstantFunction<If_t> If{};
+constexpr static If_t If{};
 
 template <class T, char c> constexpr auto Parse(Type<T>, ConstantList<CharConstant<c>>) {
 	return TConstant<T, c - '0'>{};
@@ -402,7 +402,7 @@ struct InvokeMultiMethod_t {
 			using R = decltype(DeclVal(RemoveRValueReference(getCommonResultType(boundTypeListList, MakeList()))));
 			using NullImp = MultiMethodNullImp<R, V&&...>;
 			auto getNullImps = MakeRecursive([&](auto getNullImps, auto bll) {
-				return IF(Empty(bll), TCONSTANT(&NullImp::value){}, bll | [&](auto bl0, auto... bl1) {
+				return IF(Empty(bll), VCONSTANT(&NullImp::value){}, bll | [&](auto bl0, auto... bl1) {
 					auto nullImps = getNullImps(MakeList(bl1...));
 					return bl0 | [&](auto... b) {
 						return MakeArray(nullImps, ((void)b, nullImps)...);
@@ -411,7 +411,7 @@ struct InvokeMultiMethod_t {
 			});
 			auto getImps = MakeRecursive([&](auto getImps, auto bll, auto al) {
 				return IF(Size(bll) == 0_z, al | [&](auto... a) {
-					return TCONSTANT(&MultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>::value){};
+					return VCONSTANT(&MultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>::value){};
 				}, bll | [&](auto bl0, auto... bl1) {
 					auto tail = MakeList(bl1...);
 					return bl0 | [&](auto... b) {

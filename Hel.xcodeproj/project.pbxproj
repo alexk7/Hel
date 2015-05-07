@@ -218,6 +218,10 @@
 				HEADER_SEARCH_PATHS = /usr/local/include;
 				MACOSX_DEPLOYMENT_TARGET = 10.7;
 				ONLY_ACTIVE_ARCH = YES;
+				OTHER_CPLUSPLUSFLAGS = (
+					"-ferror-limit=1",
+					"-ftemplate-backtrace-limit=0",
+				);
 				SDKROOT = macosx;
 				USER_HEADER_SEARCH_PATHS = include;
 			};
@@ -251,6 +255,10 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = /usr/local/include;
 				MACOSX_DEPLOYMENT_TARGET = 10.7;
+				OTHER_CPLUSPLUSFLAGS = (
+					"-ferror-limit=1",
+					"-ftemplate-backtrace-limit=0",
+				);
 				SDKROOT = macosx;
 				USER_HEADER_SEARCH_PATHS = include;
 			};

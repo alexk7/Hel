@@ -7,26 +7,29 @@ template <class D> struct Constant {
 template <class T, T t> struct TConstant : Constant<TConstant<T, t>> {
 	constexpr static T Value() { return t; }
 };
-#define TCONSTANT(...) TConstant<std::remove_const_t<decltype(__VA_ARGS__)>, __VA_ARGS__>
+#define VCONSTANT(...) TConstant<std::decay_t<decltype(__VA_ARGS__)>, __VA_ARGS__>
 
 template <size_t p> struct SfinaePriority : SfinaePriority<p - 1> {};
 template <> struct SfinaePriority<0> {};
 
 template <class F> class ConstantFunction {
-	template <class S> static void VerifyConstant(const Constant<S>& c) {}
-	template <class... T> constexpr static auto SfinaeHack(SfinaePriority<2>, const T&... t)
-		-> TCONSTANT(F::invoke(decltype(VerifyConstant(t), T{})::Value()...)) {
+	template <class T> static void VerifyConstant(const Constant<T>&) {}
+	template <class... T> constexpr static auto SfinaeHack(SfinaePriority<2>, T... t)
+		-> VCONSTANT(F::invoke(decltype(VerifyConstant(t), T{})::Value()...)) {
 		return {};
 	}
-	template <class... T> struct Result : Constant<Result<T...>> {
+	template <class T> constexpr static bool VerifyConstExpr(const T&) { return true; }
+ 	template <bool, class... T> struct Result : Constant<Result<true, T...>> {
 		constexpr static auto value = F::invoke(T::Value()...);
 		constexpr static auto Value() { return value; }
 	};
-	template <class... T> constexpr static auto SfinaeHack(SfinaePriority<1>, const T&... t)
-		-> Result<decltype(VerifyConstant(t), T{})...> {
+	template <class... T> constexpr static auto SfinaeHack(SfinaePriority<1>, T... t)
+		//TODO: Verify if the compiler calls invoke twice at compile-time.
+		//It should be able to completely ellide the one used to verify constexpr-ness.
+		-> Result<VerifyConstExpr(F::invoke(decltype(VerifyConstant(t), T{})::Value()...)), T...> {
 		return {};
 	}
-	template <class... T> constexpr static auto SfinaeHack(SfinaePriority<0>, const T&... t) {
+	template <class... T> constexpr static auto SfinaeHack(SfinaePriority<0>, T... t) {
 		return F::invoke(t...);
 	}
 public:
