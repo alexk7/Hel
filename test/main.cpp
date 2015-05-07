@@ -170,14 +170,14 @@ template <class N, class XL> auto GetNthElement(N n, XL xl) {
 	};
 };
 
-/*
+//*
 class Unique_t {
 	template <class... X>
 	struct Data {
 		size_t indices[sizeof...(X)] = {
 			decltype(With(X{}) | [](auto x) {
 				return FindArg(x, X{}...);
-			})::value...
+			})::Value()...
 		};
 		size_t count = 0;
 		constexpr Data() {
@@ -188,8 +188,8 @@ class Unique_t {
 		}
 	};
 public:
-	template <class... X, X... x> auto operator()(Constant<X, x>...) const {
-		constexpr Data<Constant<X, x>...> data{};
+	template <class... X> auto operator()(Constant<X>...) const {
+		constexpr Data<X...> data{};
 		return MakeIndexList(SizeConstant<data.count>{}) | [&](auto... i) {
 			return MakeList(GetNthArg(SizeConstant<data.indices[i]>{}, X{}...)...);
 		};
@@ -644,9 +644,9 @@ inline void Test3(Circle, Rectangle, Triangle) {
 
 int main()
 {
-	cout << Name(Type<decltype(test)>{}) << endl;
+	cout << Name(Type<decltype(test2)>{}) << endl;
 
-#if 1
+#if 0
 	{
 		Shape3 s;
 		s = Circle{};
@@ -654,7 +654,7 @@ int main()
 	}
 #endif
 
-#if 1
+#if 0
 	{
 		Shape2 v, v2, v3;
 		v = Circle{};
@@ -667,7 +667,7 @@ int main()
 	}
 #endif
 
-#if 1
+#if 0
 	{
 		Shape3 v, v2, v3;
 		v = Circle{};
@@ -678,7 +678,7 @@ int main()
 	}
 #endif
 
-#if 1
+#if 0
 	{
 		Shape3b v, v2, v3;
 		v = Circle{};
@@ -689,7 +689,7 @@ int main()
 	}
 #endif
 
-#if 1
+#if 0
 	Circle c;
 	Rectangle r;
 
