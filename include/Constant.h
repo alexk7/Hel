@@ -87,7 +87,7 @@ constexpr static ConstantFunction<Sub_t> Sub{};
 template <class A, class B> constexpr auto operator-(Constant<A>, Constant<B>) { return Sub(A{}, B{}); }
 
 struct Mul_t {
-	template <class A, class B> constexpr static auto invoke(const A& a, const B& b) { return a - b; }
+	template <class A, class B> constexpr static auto invoke(const A& a, const B& b) { return a * b; }
 };
 constexpr static ConstantFunction<Mul_t> Mul{};
 template <class A, class B> constexpr auto operator*(Constant<A>, Constant<B>) { return Mul(A{}, B{}); }
