@@ -279,22 +279,19 @@ constexpr static CartesianProduct_t CartesianProduct{};
 
 //*
 class CartesianProduct_t {
-	constexpr static void FillIndexArray(size_t* result, const size_t* sizes, size_t i, size_t n) {
-		for (size_t j = n; j--;) {
-			result[j] = i % sizes[j];
-			i /= sizes[j];
-		}
-	}
 	template <size_t... s> constexpr static auto MakeIndexArray(size_t i) {
 		constexpr size_t sizes[] = { s... };
 		constexpr size_t n = sizeof...(s);
 		Array<size_t, n> result{};
-		FillIndexArray(result.values, sizes, i, n);
+		for (size_t j = n; j--;) {
+			result[j] = i % sizes[j];
+			i /= sizes[j];
+		}
 		return result;
 	}
 public:
 	template <class... L> auto operator()(L... l) const {
-		//constexpr static Array<size_t, sizeof...(l)> sizes =
+		//constexpr static size_t[] sizes =
 		return MakeIndexList(Multiply(Size(l)...)) | [&l...](auto... i) {
 			return MakeList(With(i) | [&l...](auto i) {
 				constexpr static auto indexArray = MakeIndexArray<decltype(Size(l))::Value()...>(decltype(i)::Value());
