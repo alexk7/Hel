@@ -235,7 +235,7 @@ constexpr static Concatenate_t Concatenate_2{};
 */
 
 
-//*
+/*
 class CartesianProduct_t {
 	constexpr static void FillIndexArray(size_t* result, const size_t* sizes, size_t P, size_t N) {
 		for (size_t i = 0; i < P; ++i) {
@@ -246,18 +246,17 @@ class CartesianProduct_t {
 			}
 		}
 	}
-	template <class... S> constexpr static auto MakeIndexArray() {
-		constexpr size_t P = Multiply(S{}...);
-		constexpr size_t N = sizeof...(S);
-		constexpr size_t sizes[] = { S{}... };
+	template <size_t... s> constexpr static auto MakeIndexArray() {
+		constexpr size_t P = Multiply(s...);
+		constexpr size_t N = sizeof...(s);
+		constexpr size_t sizes[] = { s... };
 		Array<size_t, P * N> result{};
 		FillIndexArray(result.values, sizes, P, N);
 		return result;
 	}
-	//*
 	template <class... S> static auto MakeIndexListList(S...) {
-		constexpr static auto N = ArgCount(S{}...);
-		constexpr static auto indexArray = MakeIndexArray<S...>();
+		constexpr static auto N = ArgCount(S::Value()...);
+		constexpr static auto indexArray = MakeIndexArray<S::Value()...>();
 		return MakeIndexList(Multiply(S{}...)) | [](auto... i) {
 			return MakeList(With(i) | [](auto i) {
 				return MakeIndexList(N) | [&](auto... j) {
@@ -266,25 +265,42 @@ class CartesianProduct_t {
 			}...);
 		};
 	}
-	//*/
-	/*
-	static auto MakeIndexListList = [](auto... s) {
-		constexpr static auto N = ArgCount(s...);
-		constexpr static auto indexArray = MakeIndexArray<decltype<s>...>();
-		return MakeIndexList(Multiply(S{}...)) | [](auto... i) {
-			return MakeList(With(i) | [](auto i) {
-				return MakeIndexList(N) | [&](auto... j) {
-					return MakeList(SizeConstant<indexArray[decltype(i * N + j)::Value()]>{}...);
-				};
-			}...);
-		};
-	}
-	//*/
 public:
 	template <class... L> auto operator()(L... l) const {
 		return MakeIndexListList(Size(l)...) | [&l...](auto... il) {
 			return MakeList(il | [&l...](auto... i) {
 				return MakeList(l[i]...);
+			}...);
+		};
+	}
+};
+constexpr static CartesianProduct_t CartesianProduct{};
+//*/
+
+//*
+class CartesianProduct_t {
+	constexpr static void FillIndexArray(size_t* result, const size_t* sizes, size_t i, size_t n) {
+		for (size_t j = n; j--;) {
+			result[j] = i % sizes[j];
+			i /= sizes[j];
+		}
+	}
+	template <size_t... s> constexpr static auto MakeIndexArray(size_t i) {
+		constexpr size_t sizes[] = { s... };
+		constexpr size_t n = sizeof...(s);
+		Array<size_t, n> result{};
+		FillIndexArray(result.values, sizes, i, n);
+		return result;
+	}
+public:
+	template <class... L> auto operator()(L... l) const {
+		//constexpr static Array<size_t, sizeof...(l)> sizes =
+		return MakeIndexList(Multiply(Size(l)...)) | [&l...](auto... i) {
+			return MakeList(With(i) | [&l...](auto i) {
+				constexpr static auto indexArray = MakeIndexArray<decltype(Size(l))::Value()...>(decltype(i)::Value());
+				return MakeIndexList(ArgCount(l...)) | [&l...](auto... j) {
+					return MakeList(l[SizeConstant<indexArray[j]>{}]...);
+				};
 			}...);
 		};
 	}
@@ -302,8 +318,7 @@ static auto test = CartesianProduct(
 	MakeList(type<long long>, type<unsigned>, type<void*>, type<char*>),
 	MakeList(type<long long>, type<unsigned>, type<void*>, type<char*>),
 	MakeList(type<long long>, type<unsigned>, type<void*>, type<char*>, type<int>, type<void>, type<char>, type<double>),
-	MakeList(type<long long>, type<unsigned>, type<void*>, type<char*>, type<int>, type<void>, type<char>, type<double>),
-	MakeList(0_z, 1_z, 2_z));
+	MakeList(type<long long>, type<unsigned>, type<void*>, type<char*>, type<int>, type<void>, type<char>, type<double>));
 //*/
 /*
 static auto test = MakeList(

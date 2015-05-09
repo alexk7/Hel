@@ -2,7 +2,7 @@
 #include <fstream>
 using namespace std;
 
-const int LIMIT = 1024;
+const int LIMIT = 32;
 
 int main(int argc, const char * argv[]) {
 	ofstream out("MakeIndexList.g");
