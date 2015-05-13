@@ -172,10 +172,11 @@ template <class N, class XL> auto GetNthElement(N n, XL xl) {
 class Unique_t {
 	template <class... X>
 	struct Data {
+		template <class T> static auto findArg(T) {
+			return FindArg(T{}, X{}...);
+		}
 		size_t indices[sizeof...(X)] = {
-			decltype(With(X{}) | [](auto x) {
-				return FindArg(x, X{}...);
-			})::Value()...
+			decltype(findArg(X{}))::Value()...
 		};
 		size_t count = 0;
 		constexpr Data() {
@@ -194,8 +195,6 @@ public:
 	}
 };
 constexpr static Unique_t Unique{};
-
-static auto test2 = Unique(Type<int>{}, Type<int>{}, Type<char>{}, Type<int>{}, Type<short>{}, Type<short>{});
 //*/
 
 //template <class T, size_t s> constexpr auto Size(Array<T, s>) { return SizeConstant<s>{}; }
@@ -291,14 +290,18 @@ class CartesianProduct_t {
 	}
 public:
 	template <class... L> auto operator()(L... l) const {
-		//constexpr static size_t[] sizes =
-		return MakeIndexList(Multiply(Size(l)...)) | [&l...](auto... i) {
-			return MakeList(With(i) | [&l...](auto i) {
-				constexpr static auto indexArray = MakeIndexArray<decltype(Size(l))::Value()...>(decltype(i)::Value());
-				return MakeIndexList(ArgCount(l...)) | [&l...](auto... j) {
-					return MakeList(l[SizeConstant<indexArray[j]>{}]...);
-				};
-			}...);
+		auto makePermutation = [&l...](auto... i) {
+			return MakeList(l[i]...);
+		};
+		constexpr static auto elementIndexList = MakeIndexList(SizeConstant<sizeof...(L)>{});
+		auto makeElement = [&makePermutation](auto i) {
+			constexpr static auto indexArray = MakeIndexArray<decltype(Size(l))::Value()...>(i);
+			return elementIndexList | [&makePermutation](auto... j) {
+				return makePermutation(SizeConstant<indexArray[j]>{}...);
+			};
+		};
+		return MakeIndexList(Multiply(Size(l)...)) | [&makeElement](auto... i) {
+			return MakeList(makeElement(i)...);
 		};
 	}
 };
@@ -310,15 +313,15 @@ static auto testb = MakeIndexList(SizeConstant<257>{}) | [](auto j, auto... i) {
 	return 0;
 };
 //*/
-//*
+/*
 static auto test = CartesianProduct(
 	MakeList(type<long long>, type<unsigned>, type<void*>, type<char*>),
 	MakeList(type<long long>, type<unsigned>, type<void*>, type<char*>),
 	MakeList(type<long long>, type<unsigned>, type<void*>, type<char*>, type<int>, type<void>, type<char>, type<double>),
 	MakeList(type<long long>, type<unsigned>, type<void*>, type<char*>, type<int>, type<void>, type<char>, type<double>));
 //*/
-/*
-static auto test = MakeList(
+//*
+static auto testb = CartesianProduct(
 	MakeList(type<long long>, type<unsigned>, type<void*>, type<char*>),
 	MakeList(type<long long>, type<unsigned>, type<void*>, type<char*>),
 	MakeList(type<long long>, type<unsigned>, type<void*>, type<char*>, type<int>, type<void>, type<char>, type<double>),
@@ -430,11 +433,11 @@ template <class F, class R, class ...V> struct MultiMethodImp {
 	};
 };
 
-/*
+//*
 struct InvokeMultiMethod_t {
 	template <class F, class... V> struct Imps {
 		static auto ConstantValue() {
-			auto boundTypeListList = MakeList(With(Type<V&&>{}) | [&](auto v) {
+			auto boundTypeListList = MakeList(With(Type<V&&>{}) | [](auto v) {
 				return BoundTypes(Decay(v)) | [&](auto... b) {
 					return MakeList(ApplyCVReference(v, b)...);
 				};
@@ -494,48 +497,86 @@ constexpr typename InvokeMultiMethod_t::Imps<F, V...>::type InvokeMultiMethod_t:
 constexpr static InvokeMultiMethod_t InvokeMultiMethod{};
 //*/
 
-//*
+
+/*
+struct FlattenIndices_t {
+	template <size_t count>
+	constexpr size_t operator()(const Array<size_t, count> sizes, const Array<size_t, count>& indices) {
+		size_t r = 0;
+		size_t i = count;
+		size_t m = 1;
+		while (i--) {
+			r += m * indices[i];
+			m *= sizes[i];
+		}
+		return r;
+	}
+};
+constexpr static ConstantFunction<FlattenIndices_t> FlattenIndices{};
+
 struct InvokeMultiMethod_t {
 	template <class F, class... V> struct Imps {
 		static auto ConstantValue() {
-			auto boundTypeListList = MakeList(With(Type<V&&>{}) | [&](auto v) {
+			auto getBoundTypeList = [](auto v) {
 				return BoundTypes(Decay(v)) | [&](auto... b) {
 					return MakeList(ApplyCVReference(v, b)...);
 				};
-			}...);
+			};
+			auto boundTypeListList = MakeList(getBoundTypeList(Type<V&&>{})...);
 
-			/*
-			auto argTypeListList = boundTypeListList | [&](auto... bl) {
+			auto argTypeListList = boundTypeListList | [](auto... bl) {
 				return CartesianProduct(bl...);
 			};
-			*/
-			/*
-			auto resultTypeList = argTypeListList | [&](auto... al) {
-				return Unique(al | [&](auto... a) {
+			auto getResultType = [](auto al) {
+				return al | [](auto... a) {
 					return ResultType(Type<F>{}, a...);
-				}...);
+				};
 			};
-			using R = decltype(DeclVal(RemoveRValueReference(resultTypeList | [&](auto... r) {
-				return CommonType(r...);
+			using R = decltype(DeclVal(RemoveRValueReference(argTypeListList | [&](auto... al) {
+				return Unique(getResultType(al)...) | [](auto... r) {
+					return CommonType(r...);
+				};
 			})));
-			//*/
-
-			//*
-			auto getCommonResultType = MakeRecursive([&](auto getCommonResultType, auto bll, auto al) {
-				return IF(Empty(bll), al | [&](auto... a) {
-					return ResultType(Type<F>{}, a...);
-				}, bll | [&](auto bl0, auto... bl1) {
-					return bl0 | [&](auto... b) {
-						return al | [&](auto... a) {
-							return CommonType(getCommonResultType(MakeList(bl1...), MakeList(a..., b))...);
-						};
-					};
-				});
-			});
-			using R = decltype(DeclVal(RemoveRValueReference(getCommonResultType(boundTypeListList, MakeList()))));
-			//*/
 
 			using NullImp = MultiMethodNullImp<R, V&&...>;
+
+			/
+			auto getImpEntry = [&](auto sizes, auto il) {
+				return il | [&](auto... i) {
+					auto indices = MakeArray((i + 1_z)...);
+					return MakeList(
+						FlattenIndices(sizes, indices),
+						boundTypeListList | [&](auto... bl) {
+							return VCONSTANT(&MultiMethodImp<F, R, V&&...>::template WithArgs<decltype(bl[i]){}...>::value){};
+						};
+					);
+				};
+			};
+			auto impEntries = boundTypeListList | [](auto... bl) {
+				return With(Size(bl)...) | [](auto... s) {
+					auto sizes = MakeArray(s...);
+					return CartesianProduct(MakeIndexList(s)...) | [](auto... il) {
+						return getImpEntry(sizes, il)...
+					};
+				};
+			};
+
+			//constexpr size_t impCount = Multiply(BoundTypes(Decay(type<V>)))
+			//Array<R(*)(V&&...), impCount> imps;
+			///
+
+			//
+			auto getBoundTypeList2 = [](auto v) {
+				return BoundTypes(Decay(v)) | [&](auto... b) {
+					return MakeList(Type<void>{}, ApplyCVReference(v, b)...);
+				};
+			};
+			auto test = MakeList(getBoundTypeList2(Type<V&&>{})...) | [](auto... bl) {
+				return CartesianProduct(bl...);
+			};
+			///
+
+			//
 			auto getNullImps = MakeRecursive([&](auto getNullImps, auto bll) {
 				return IF(Empty(bll), VCONSTANT(&NullImp::value){}, bll | [&](auto bl0, auto... bl1) {
 					auto nullImps = getNullImps(MakeList(bl1...));
@@ -557,6 +598,7 @@ struct InvokeMultiMethod_t {
 				});
 			});
 			return getImps(boundTypeListList, MakeList());
+			///
 		}
 		using ctype = decltype(ConstantValue());
 		using type = decltype(ctype::Value());
@@ -780,9 +822,9 @@ inline void Test3(Circle, Rectangle, Triangle) {
 
 int main()
 {
-	//cout << Name(Type<decltype(test)>{}) << endl;
+	//cout << Name(Type<decltype(testb)>{}) << endl;
 
-#if 0
+#if 1
 	{
 		Shape3 s;
 		s = Circle{};
@@ -790,7 +832,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	{
 		Shape2 v, v2, v3;
 		v = Circle{};
@@ -803,7 +845,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	{
 		Shape3 v, v2, v3;
 		v = Circle{};
@@ -814,7 +856,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	{
 		Shape3b v, v2, v3;
 		v = Circle{};
@@ -825,7 +867,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	Circle c;
 	Rectangle r;
 
