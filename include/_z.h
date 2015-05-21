@@ -3,7 +3,6 @@
 #include "ConstantList.h"
 #include "TConstant.h"
 #include "Type.h"
-
 template <class T, char c> constexpr auto Parse(Type<T>, ConstantList<CharConstant<c>>) {
 	return TConstant<T, c - '0'>{};
 }

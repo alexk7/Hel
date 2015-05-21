@@ -2,6 +2,8 @@
 #include "Array.h"
 #include "CharConstant.h"
 #include "Constant.h"
+#include "Decay.h"
+#include "DeclVal.h"
 #include "False.h"
 #include "MakeArray.h"
 #include "MakeIndexList.h"
@@ -25,8 +27,6 @@
 #include <utility>
 #include <algorithm>
 
-template <class T> T DeclVal(Type<T>);
-template <class T> constexpr auto Decay(Type<T>) { return Type<std::decay_t<T>>{}; }
 template <class T> constexpr auto RemoveRValueReference(Type<T&&>) { return Type<T>{}; }
 template <class T> constexpr auto RemoveRValueReference(Type<T>) { return Type<T>{}; }
 
@@ -769,7 +769,7 @@ int main()
 {
 	//cout << Name(Type<decltype(testb)>{}) << endl;
 
-#if 0
+#if 1
 	{
 		Shape3 s;
 		s = Circle{};
@@ -777,7 +777,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	{
 		Shape2 v, v2, v3;
 		v = Circle{};
@@ -790,7 +790,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	{
 		Shape3 v, v2, v3;
 		v = Circle{};
@@ -801,7 +801,7 @@ int main()
 	}
 #endif
 
-#if 0
+#if 1
 	{
 		Shape3b v, v2, v3;
 		v = Circle{};
@@ -814,23 +814,23 @@ int main()
 
 #if 1
 	Circle c;
-	//Rectangle r;
+	Rectangle r;
 
 	{
 		using Shape = Variant<Triangle, Circle, Rectangle>;
-		//Shape s{c};
-		//Print(s);
+		Shape s{c};
+		Print(s);
 
-		//Shape s2;
-		//s2 = c;
-		//Shape s3{r};
-		//Shape s4{nullptr};
+		Shape s2;
+		s2 = c;
+		Shape s3{r};
+		Shape s4{nullptr};
 		//Print(s4);
 		//Shape s5{"allo"};
 		//Shape s6{0}; //delegating ctor disable 0 -> nullptr conversion
 		//Shape s6_1{1};
-		//Shape s7{Triangle{}};
-		//Shape s8{move(s)};
+		Shape s7{Triangle{}};
+		Shape s8{move(s)};
 		//Shape s8_1{double{}};
 		Shape s9;
 		char c = getchar();
@@ -841,21 +841,21 @@ int main()
 		else if (c == 't')
 			s9 = Triangle{};
 
-		//try {
-			//Intersect(s9, s2);
+		try {
+			Intersect(s9, s2);
 			Print(s9);
-			//cout << Index(s9) << endl;
-			//cout << Index(move(s9)) << endl;
-		//} catch (const exception& e) {
-		//	puts(e.what());
-		//}
+			cout << Index(s9) << endl;
+			cout << Index(move(s9)) << endl;
+		} catch (const exception& e) {
+			puts(e.what());
+		}
 
-		//cout << "----------" << endl;
-		//s7 = move(s3);
+		cout << "----------" << endl;
+		s7 = move(s3);
 
-		//cout << "----------" << endl;c
+		cout << "----------" << endl;
 	}
 
-	//cout << "----------" << endl;
+	cout << "----------" << endl;
 #endif
 }

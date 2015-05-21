@@ -1,7 +1,7 @@
 #pragma once
 #include "False.h"
-#include "TypeName.h"
 #include "True.h"
+#include "TypeName.h"
 #include "Unit.h"
 template <class T> struct Type : Unit<Type<T>> {};
 template <class T> constexpr auto operator==(Type<T>, Type<T>) { return True; }
