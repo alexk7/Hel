@@ -1,4 +1,6 @@
 #pragma once
+#include "Begin.h"
+#include "End.h"
 template <class T, class U> class Range {
 	T begin_;
 	U end_;
@@ -7,4 +9,3 @@ public:
 	friend constexpr T Begin(const Range& r) { return r.begin_; }
 	friend constexpr U End(const Range& r) { return r.end_; }
 };
-template <class T, class U> constexpr auto Empty(const Range<T, U>& r) { return Begin(r) == End(r); }

@@ -1,3 +1,8 @@
+#include "EndsWith.h"
+#include "GetLine.h"
+#include "MakeUniquePtr.h"
+#include "StartsWith.h"
+#include "With.h"
 #include <iostream>
 #include <fstream>
 #include <stdio.h>
@@ -6,13 +11,7 @@
 #include <set>
 #include <unordered_set>
 #include <vector>
-#include "GetLine.h"
-#include "MakeUniquePtr.h"
-#include "Mismatch.h"
-#include "StartsWith.h"
-#include "With.h"
 using namespace std;
-
 int main(int argc, const char * argv[]) {
 	auto filenames = With(MakeUniquePtr(popen("ls *.h", "r"), pclose)) | [](auto pFile) {
 		vector<string> v;
@@ -23,6 +22,8 @@ int main(int argc, const char * argv[]) {
 	unordered_set<string> symbols;
 	for (const auto& filename : filenames)
 		symbols.insert(filename.substr(0, filename.rfind('.')));
+	filenames.push_back("../test/main.cpp"s);
+	filenames.push_back("../doh/main.cpp"s);
 	for (const auto& filename : filenames) {
 		if (auto pFile = MakeUniquePtr(fopen(filename.c_str(), "r"), fclose)) {
 			cout << "FILE: " << filename << endl;
@@ -30,7 +31,7 @@ int main(int argc, const char * argv[]) {
 			vector<string> code;
 			while (auto pLine = GetLine(pFile.get())) {
 				string line{pLine};
-				if (!line.empty() && line != "#pragma once" && !StartsWith(line, "#include \""s)) {
+				if (!line.empty() && line != "#pragma once" && !(StartsWith(line, "#include \""s) && EndsWith(line, ".h\""s))) {
 					static const regex r{"[_a-zA-Z][_a-zA-Z0-9]*"};
 					sregex_iterator i{begin(line), end(line), r}, iEnd;
 					for_each(i, iEnd, [&](auto m) {
@@ -42,7 +43,8 @@ int main(int argc, const char * argv[]) {
 				}
 			}
 			ofstream out(filename);
-			out << "#pragma once\n";
+			if (filename.back() == 'h')
+				out << "#pragma once\n";
 			for (const auto& e : dependencies)
 				out << "#include \"" << e << ".h\"\n";
 			for (const auto& e : code)
