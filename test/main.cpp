@@ -1,25 +1,20 @@
 #include "ApplyCVReference.h"
 #include "Array.h"
+#include "CartesianProduct.h"
 #include "CommonType.h"
-#include "Constant.h"
 #include "ConstantFunction.h"
 #include "ConstantList.h"
 #include "Decay.h"
 #include "DeclVal.h"
 #include "FindArg.h"
-#include "GetNthArg.h"
 #include "MakeArray.h"
-#include "MakeIndexList.h"
 #include "MakeList.h"
-#include "Multiply.h"
 #include "PPCAT.h"
 #include "RemoveRValueReference.h"
 #include "ResultType.h"
 #include "Size.h"
-#include "SizeConstant.h"
-#include "Sum.h"
 #include "Type.h"
-#include "With.h"
+#include "Unique.h"
 #include "_z.h"
 #include <algorithm>
 #include <array>
@@ -30,94 +25,6 @@
 #include <type_traits>
 #include <utility>
 #include <algorithm>
-class Unique_t {
-	template <class... X>
-	struct Data {
-		template <class T> static auto findArg(T) {
-			return FindArg(T{}, X{}...);
-		}
-		size_t indices[sizeof...(X)] = {
-			decltype(findArg(X{}))::Value()...
-		};
-		size_t count = 0;
-		constexpr Data() {
-			for (size_t i = 0; i < sizeof...(X); ++i) {
-				if (indices[i] == i)
-					indices[count++] = i;
-			}
-		}
-	};
-public:
-	template <class... X> auto operator()(Constant<X>...) const {
-		constexpr Data<X...> data{};
-		return MakeIndexList(SizeConstant<data.count>{}) | [&](auto... i) {
-			return MakeList(GetNthArg(SizeConstant<data.indices[i]>{}, X{}...)...);
-		};
-	}
-};
-constexpr static Unique_t Unique{};
-/*
-class Concatenate_t {
-	template <class... S> constexpr static auto MakeIndexArrayArray() {
-		Array<Array<size_t, 2>, Sum(S{}...)> array{};
-		size_t sizes[] = { S{}... };
-		for (size_t n = 0, i = 0; i < sizeof...(S); ++i)
-			for (size_t j = 0; j < sizes[i]; ++j, ++n)
-				array[n] = {{ i, j }};
-		return array;
-	}
-	template <class... S> static auto MakeIndexListList(S...) {
-		constexpr static auto indexArrayArray = MakeIndexArrayArray<S...>();
-		return MakeIndexList(Sum(S{}...)) | [](auto... n) {
-			return MakeList(With(n) | [](auto n) {
-				constexpr auto indexArray = indexArrayArray[n];
-				constexpr auto i = SizeConstant<indexArray[0]>{};
-				constexpr auto j = SizeConstant<indexArray[1]>{};
-				return MakeList(i, j);
-			}...);
-		};
-	}
-public:
-	template <class... L> auto operator()(L... l) const {
-		auto ll = MakeList(l...);
-		return MakeIndexListList(Size(l)...) | [&](auto... il) {
-			return MakeList(il | [&](auto i, auto j) {
-				return ll[i][j];
-			}...);
-		};
-	}
-};
-constexpr static Concatenate_t Concatenate_2{};
-*/
-class CartesianProduct_t {
-	template <size_t... s> constexpr static auto MakeIndexArray(size_t i) {
-		constexpr size_t sizes[] = { s... };
-		constexpr size_t n = sizeof...(s);
-		Array<size_t, n> result{};
-		for (size_t j = n; j--;) {
-			result[j] = i % sizes[j];
-			i /= sizes[j];
-		}
-		return result;
-	}
-public:
-	template <class... L> auto operator()(L... l) const {
-		auto makePermutation = [&l...](auto... i) {
-			return MakeList(l[i]...);
-		};
-		constexpr static auto elementIndexList = MakeIndexList(SizeConstant<sizeof...(L)>{});
-		auto makeElement = [&](auto i) {
-			constexpr static auto indexArray = MakeIndexArray<decltype(Size(l))::Value()...>(i);
-			return elementIndexList | [&](auto... j) {
-				return makePermutation(SizeConstant<indexArray[j]>{}...);
-			};
-		};
-		return MakeIndexList(Multiply(Size(l)...)) | [&](auto... i) {
-			return MakeList(makeElement(i)...);
-		};
-	}
-};
-constexpr static CartesianProduct_t CartesianProduct{};
 namespace InvalidNS {
 struct Invalid {
 	template <class T> operator T() const { throw ""; }
