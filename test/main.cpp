@@ -7,6 +7,7 @@
 #include "Decay.h"
 #include "DeclVal.h"
 #include "FindArg.h"
+#include "Invalid.h"
 #include "MakeArray.h"
 #include "MakeList.h"
 #include "PPCAT.h"
@@ -25,11 +26,6 @@
 #include <type_traits>
 #include <utility>
 #include <algorithm>
-namespace InvalidNS {
-struct Invalid {
-	template <class T> operator T() const { throw ""; }
-};
-}
 namespace VariantNS {
 class VariantBase {
 protected:
@@ -86,9 +82,9 @@ public:
 	}
 	friend size_t BoundTypeIndex(const Variant& v) { return v.data_.tag; }
 };
-template <class ...T> constexpr auto BoundTypes(Type<Variant<T...>>) { return ConstantList<Type<InvalidNS::Invalid>, Type<T>...>{}; }
+template <class ...T> constexpr auto BoundTypes(Type<Variant<T...>>) { return MakeList(type<InvalidNS::Invalid>, type<T>...); }
 template <class T> constexpr size_t BoundTypeIndex(const T&) { return 0; }
-template <class T> constexpr auto BoundTypes(Type<T>) { return ConstantList<Type<T>>{}; }
+template <class T> constexpr auto BoundTypes(Type<T>) { return MakeList(type<T>); }
 template <class T, class U> std::enable_if_t<Type<T>{} == Type<U&&>{}, T> UnsafeGetAs(Type<T>, U&& u) {
 	return static_cast<T>(u);
 }
