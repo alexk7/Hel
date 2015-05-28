@@ -15,14 +15,15 @@
 #include "Type.h"
 #include "Unique.h"
 #include "UnsafeGetAs.h"
-template <class F, class R, class ...V> struct MultiMethodImp {
-	template <class ...A> struct WithArgs {
-		static R value(V ...v) {
-			return static_cast<R>(F{}(UnsafeGetAs(A{}, static_cast<V>(v))...));
-		}
+class InvokeMultiMethod_t {
+	template <class F, class R, class ...V> struct Imp {
+		template <class ...A> struct WithArgs {
+			static R value(V... v) {
+				return static_cast<R>(F{}(UnsafeGetAs(A{}, static_cast<V>(v))...));
+			}
+		};
 	};
-};
-struct InvokeMultiMethod_t {
+public:
 	template <class F, class... V> constexpr auto operator()(F, V&&... v) const {
 		auto getBoundTypeList = [](auto v) {
 			return BoundTypes(Decay(v)) | [&](auto... b) {
@@ -45,7 +46,7 @@ struct InvokeMultiMethod_t {
 		})));
 		auto getImp = [&](auto al) {
 			return al | [](auto... a) {
-				return VCONSTANT(&MultiMethodImp<F, R, V&&...>::template WithArgs<decltype(a)...>::value){};
+				return VCONSTANT(&Imp<F, R, V&&...>::template WithArgs<decltype(a)...>::value){};
 			};
 		};
 		constexpr auto imps = decltype(argTypeListList | [&](auto... al) {
