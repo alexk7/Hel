@@ -12,17 +12,14 @@
 #include "RemoveRValueReference.h"
 #include "ResultType.h"
 #include "Size.h"
+#include "TConstant.h"
 #include "Type.h"
 #include "Unique.h"
 #include "UnsafeGetAs.h"
 class InvokeMultiMethod_t {
-	template <class F, class R, class ...V> struct Imp {
-		template <class ...A> struct WithArgs {
-			static R value(V... v) {
-				return static_cast<R>(F{}(UnsafeGetAs(A{}, static_cast<V>(v))...));
-			}
-		};
-	};
+	template <class F, class... A, class R, class... V> static R imp(V... v) {
+		return static_cast<R>(F{}(UnsafeGetAs(A{}, static_cast<V>(v))...));
+	}
 public:
 	template <class F, class... V> constexpr auto operator()(F, V&&... v) const {
 		auto getBoundTypeList = [](auto v) {
@@ -30,10 +27,7 @@ public:
 				return MakeList(ApplyCVReference(v, b)...);
 			};
 		};
-		auto boundTypeListList = MakeList(getBoundTypeList(Type<V&&>{})...);
-		auto argTypeListList = boundTypeListList | [](auto... bl) {
-			return CartesianProduct(bl...);
-		};
+		auto argTypeListList = CartesianProduct(getBoundTypeList(Type<V&&>{})...);
 		auto getResultType = [](auto al) {
 			return al | [](auto... a) {
 				return ResultType(Type<F>{}, a...);
@@ -46,15 +40,13 @@ public:
 		})));
 		auto getImp = [&](auto al) {
 			return al | [](auto... a) {
-				return VCONSTANT(&Imp<F, R, V&&...>::template WithArgs<decltype(a)...>::value){};
+				return TConstant<R(*)(V&&...), &imp<F, decltype(a)...>>{};
 			};
 		};
 		constexpr auto imps = decltype(argTypeListList | [&](auto... al) {
 			return MakeArray(getImp(al)...);
 		})::Value();
-		constexpr auto sizes = decltype(boundTypeListList | [&](auto... bl) {
-			return MakeArray(Size(bl)...);
-		})::Value();
+		constexpr auto sizes = decltype(MakeArray(Size(getBoundTypeList(Type<V&&>{}))...))::Value();
 		size_t index = FlattenIndices(sizes, BoundTypeIndex(v)...);
 		return imps[index](static_cast<V&&>(v)...);
 	}
