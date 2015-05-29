@@ -6,7 +6,7 @@
 #include "Size.h"
 #include "SizeConstant.h"
 class CartesianProduct_t {
-	template <size_t... s> constexpr static auto MakeIndexArray(size_t i, const SizeConstant<s>&...) {
+	template <size_t... s> constexpr static auto MakeElementIndexArray(size_t i, const SizeConstant<s>&...) {
 		constexpr size_t sizes[] = { s... };
 		constexpr size_t n = sizeof...(s);
 		Array<size_t, n> result{};
@@ -18,11 +18,10 @@ class CartesianProduct_t {
 	}
 public:
 	template <class... L> auto operator()(L... l) const {
-		constexpr static auto elementIndexList = MakeIndexList(ArgCount(l...));
 		auto makeElement = [&l...](auto i) {
-			constexpr static auto indexArray = MakeIndexArray(i, Size(l)...);
-			return elementIndexList | [&l...](auto... j) {
-				return MakeList(l[SizeConstant<indexArray[j]>{}]...);
+			constexpr static auto elementIndices = MakeElementIndexArray(i, Size(l)...);
+			return MakeIndexList(ArgCount(l...)) | [&l...](auto... j) {
+				return MakeList(l[SizeConstant<elementIndices[j]>{}]...);
 			};
 		};
 		return MakeIndexList(Multiply(Size(l)...)) | [&](auto... i) {

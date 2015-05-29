@@ -172,7 +172,7 @@ int main()
 		cout << Intersect(move(v2), v) << endl;
 	}
 #endif
-#if 0
+#if 1
 	{
 		Shape3 v, v2, v3;
 		v = Circle{};
