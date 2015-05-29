@@ -18,18 +18,15 @@ class CartesianProduct_t {
 	}
 public:
 	template <class... L> auto operator()(L... l) const {
-		auto makeElement = [&l...](auto... i) {
-			return MakeList(l[i]...);
-		};
-		constexpr auto elementIndexList = MakeIndexList(ArgCount(l...));
-		auto makeNthElement = [&](auto i) {
-			constexpr auto indexArray = MakeIndexArray(i, Size(l)...);
-			return elementIndexList | [&](auto... j) {
-				return makeElement(SizeConstant<indexArray[j]>{}...);
+		constexpr static auto elementIndexList = MakeIndexList(ArgCount(l...));
+		auto makeElement = [&l...](auto i) {
+			constexpr static auto indexArray = MakeIndexArray(i, Size(l)...);
+			return elementIndexList | [&l...](auto... j) {
+				return MakeList(l[SizeConstant<indexArray[j]>{}]...);
 			};
 		};
 		return MakeIndexList(Multiply(Size(l)...)) | [&](auto... i) {
-			return MakeList(makeNthElement(i)...);
+			return MakeList(makeElement(i)...);
 		};
 	}
 };
