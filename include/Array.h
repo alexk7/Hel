@@ -1,5 +1,5 @@
 #pragma once
-#include "MakeIndexList.h"
+#include "Size.h"
 #include "SizeConstant.h"
 #include <stddef.h>
 template <class T, size_t s> struct Array

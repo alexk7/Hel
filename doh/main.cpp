@@ -2,7 +2,6 @@
 #include "GetLine.h"
 #include "MakeUniquePtr.h"
 #include "StartsWith.h"
-#include "With.h"
 #include <iostream>
 #include <fstream>
 #include <stdio.h>
@@ -13,12 +12,13 @@
 #include <vector>
 using namespace std;
 int main(int argc, const char * argv[]) {
-	auto filenames = With(MakeUniquePtr(popen("ls *.h", "r"), pclose)) | [](auto pFile) {
+	auto filenames = []{
+		auto pFile = MakeUniquePtr(popen("ls *.h", "r"), pclose);
 		vector<string> v;
 		while (auto line = GetLine(pFile.get()))
 			v.emplace_back(line);
 		return v;
-	};
+	}();
 	unordered_set<string> symbols;
 	for (const auto& filename : filenames)
 		symbols.insert(filename.substr(0, filename.rfind('.')));
